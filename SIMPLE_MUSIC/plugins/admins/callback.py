@@ -41,12 +41,9 @@ from SIMPLE_MUSIC.utils.formatters import seconds_to_min
 from SIMPLE_MUSIC.utils.inline import close_markup, stream_markup, stream_markup_timer
 from SIMPLE_MUSIC.utils.stream.autoclear import auto_clean
 from SIMPLE_MUSIC.utils.thumbnails import get_thumb
+import config
 from config import (
     BANNED_USERS,
-    SOUNCLOUD_IMG_URL,
-    STREAM_IMG_URL,
-    TELEGRAM_AUDIO_URL,
-    TELEGRAM_VIDEO_URL,
     adminlist,
     confirmer,
     votemode,
@@ -457,7 +454,7 @@ async def del_back_playlist(client, CallbackQuery, _):
                 return await CallbackQuery.message.reply_text(_["call_6"])
             button = stream_markup(_, chat_id)
             run = await CallbackQuery.message.reply_photo(
-                photo=STREAM_IMG_URL,
+                photo=config.STREAM_IMG_URL,
                 caption=_["stream_2"].format(user),
                 reply_markup=InlineKeyboardMarkup(button),
             )
@@ -485,9 +482,9 @@ async def del_back_playlist(client, CallbackQuery, _):
                     photo=queue_image
                     if queue_image
                     else (
-                        TELEGRAM_AUDIO_URL
+                        config.TELEGRAM_AUDIO_URL
                         if str(streamtype) == "audio"
-                        else TELEGRAM_VIDEO_URL
+                        else config.TELEGRAM_VIDEO_URL
                     ),
                     caption=_["stream_1"].format(
                         config.SUPPORT_CHAT, title[:23], duration, user
@@ -499,9 +496,9 @@ async def del_back_playlist(client, CallbackQuery, _):
             elif videoid == "soundcloud":
                 button = stream_markup(_, chat_id)
                 run = await CallbackQuery.message.reply_photo(
-                    photo=SOUNCLOUD_IMG_URL
+                    photo=config.SOUNCLOUD_IMG_URL
                     if str(streamtype) == "audio"
-                    else TELEGRAM_VIDEO_URL,
+                    else config.TELEGRAM_VIDEO_URL,
                     caption=_["stream_1"].format(
                         config.SUPPORT_CHAT, title[:23], duration, user
                     ),

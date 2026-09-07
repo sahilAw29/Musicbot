@@ -16,7 +16,8 @@ import re
 import aiofiles
 import aiohttp
 from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont
-from config import YOUTUBE_IMG_URL, YT_SEARCH_API_URL
+import config
+from config import YT_SEARCH_API_URL
 
 # Constants
 CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../cache")
@@ -81,7 +82,7 @@ async def get_thumb(videoid: str, title: str = None, duration: str = None, views
                     async with aiofiles.open(thumb_path, "wb") as f:
                         await f.write(await resp.read())
     except Exception:
-        return real_yt_url if real_yt_url else YOUTUBE_IMG_URL
+        return real_yt_url if real_yt_url else config.YOUTUBE_IMG_URL
 
     # Create base image - wrap entire PIL section to fallback to real YT thumbnail on any error
     try:
@@ -144,4 +145,4 @@ async def get_thumb(videoid: str, title: str = None, duration: str = None, views
             os.remove(thumb_path)
         except Exception:
             pass
-        return real_yt_url if (real_yt_url and real_yt_url != YOUTUBE_IMG_URL) else YOUTUBE_IMG_URL
+        return real_yt_url if (real_yt_url and real_yt_url != config.YOUTUBE_IMG_URL) else config.YOUTUBE_IMG_URL

@@ -19,7 +19,7 @@ from SIMPLE_MUSIC.plugins.tools.pretenderdb import (
     add_userdata, get_userdata, usr_data
 )
 from SIMPLE_MUSIC.utils.admin_filters import admin_filter
-from config import START_IMG_URL
+import config
 
 
 
@@ -103,7 +103,7 @@ async def chk_usr(_, message: Message):
             message.from_user.last_name,
         )
     if msg != "":
-        await message.reply_photo(START_IMG_URL, caption=msg)
+        await message.reply_photo(config.START_IMG_URL, caption=msg)
 
 
 @app.on_message(filters.group & filters.command("imposter") & ~filters.bot & ~filters.via_bot & admin_filter)

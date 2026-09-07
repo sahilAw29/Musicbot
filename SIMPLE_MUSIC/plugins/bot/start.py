@@ -28,7 +28,7 @@ from SIMPLE_MUSIC.utils.inline import help_pannel_page1, private_panel, start_pa
 from strings import get_string
 
 # <emoji id='6082375377123023700'>✅</emoji> Purana tareeqa: Wapas START_IMG_URL import kar diya
-from config import BANNED_USERS, START_IMG_URL
+from config import BANNED_USERS
 
 # 💖 Heart effect on /start (private chats only)
 HEART_EFFECTS = ["5159385139981059251"]
@@ -116,7 +116,7 @@ async def start_pm(client, message: Message):
             keyboard = help_pannel_page1(_)
             await client.send_photo(
                 chat_id=message.chat.id,
-                photo=START_IMG_URL,
+                photo=config.START_IMG_URL,
                 caption=_['help_1'].format(config.SUPPORT_CHAT),
                 reply_markup=keyboard,
             )
@@ -181,7 +181,7 @@ async def start_pm(client, message: Message):
         out = private_panel(_)
         await client.send_photo(
             chat_id=message.chat.id,
-            photo=START_IMG_URL,
+            photo=config.START_IMG_URL,
             caption=_["start_2"].format(message.from_user.mention, app.mention, "Mina 0.5s", "0.2 GB", "1.2%", "14%", "<emoji id='5258203794772085854'>⚡</emoji> Fast", "<emoji id='6086954744268460848'>🔥</emoji> Active", app.username),
             reply_markup=InlineKeyboardMarkup(out),
         )
@@ -209,7 +209,7 @@ async def start_gp(client, message: Message, _):
     uptime = int(time.time() - _boot_)
     await client.send_photo(
         chat_id=message.chat.id,
-        photo=START_IMG_URL,
+        photo=config.START_IMG_URL,
         caption=_["start_1"].format(app.mention, get_readable_time(uptime)),
         reply_markup=InlineKeyboardMarkup(out),
     )
@@ -244,7 +244,7 @@ async def welcome(client, message: Message):
                 out = start_panel(_)
                 await client.send_photo(
                     chat_id=message.chat.id,
-                    photo=START_IMG_URL,
+                    photo=config.START_IMG_URL,
                     caption=_["start_3"].format(message.from_user.mention, app.mention, message.chat.title, app.mention),
                     reply_markup=InlineKeyboardMarkup(out),
                 )

@@ -49,7 +49,7 @@ def stream_caption(title, duration, requester):
         f"<b><emoji id='5989830505615331276'>🎵</emoji> ᴛɪᴛʟᴇ :</b> {title}\n"
         f"<b><emoji id='5258419835922030550'>🕔</emoji> ʟᴇɴɢᴛʜ :</b> {duration} ᴍɪɴs\n"
         f"<b><emoji id='5256143829672672750'>👤</emoji>ʀᴇǫᴜᴇsᴛᴇʀ :</b> {requester}\n\n"
-        "<emoji id='6127214603765027855'>⬅️</emoji>10s   <emoji id='6127514998072680291'>➡️</emoji>10s   "
+        "<emoji id='5438266304337296696'>⬅️</emoji>10s   <emoji id='5435955998479102657'>➡️</emoji>10s   "
         "<emoji id='5269763170968297861'>❤️</emoji>"
     )
 
@@ -127,8 +127,8 @@ def stream_markup_timer(_, chat_id, played, dur):
             InlineKeyboardButton(text="▢", callback_data=f"ADMIN Stop|{chat_id}", **_get_style(r2)),
         ],
         [
-            InlineKeyboardButton(text="10s", callback_data=f"ADMIN Back10|{chat_id}", **_get_style(r2), **_get_icon("6127214603765027855")),
-            InlineKeyboardButton(text="10s", callback_data=f"ADMIN Fwd10|{chat_id}", **_get_style(r2), **_get_icon("6127514998072680291")),
+            InlineKeyboardButton(text="10s", callback_data=f"ADMIN Back10|{chat_id}", **_get_style(r2), **_get_icon("5438266304337296696")),
+            InlineKeyboardButton(text="10s", callback_data=f"ADMIN Fwd10|{chat_id}", **_get_style(r2), **_get_icon("5435955998479102657")),
         ],
         [
             InlineKeyboardButton(text="Close", callback_data=f"STREAM_CLOSE|{chat_id}", **_get_style(r3), **_get_icon("5269763170968297861"))
@@ -151,8 +151,8 @@ def stream_markup(_, chat_id):
             InlineKeyboardButton(text="▢", callback_data=f"ADMIN Stop|{chat_id}", **_get_style(r1)),
         ],
         [
-            InlineKeyboardButton(text="10s", callback_data=f"ADMIN Back10|{chat_id}", **_get_style(r1), **_get_icon("6127214603765027855")),
-            InlineKeyboardButton(text="10s", callback_data=f"ADMIN Fwd10|{chat_id}", **_get_style(r1), **_get_icon("6127514998072680291")),
+            InlineKeyboardButton(text="10s", callback_data=f"ADMIN Back10|{chat_id}", **_get_style(r1), **_get_icon("5438266304337296696")),
+            InlineKeyboardButton(text="10s", callback_data=f"ADMIN Fwd10|{chat_id}", **_get_style(r1), **_get_icon("5435955998479102657")),
         ],
         [
             InlineKeyboardButton(text="Close", callback_data=f"STREAM_CLOSE|{chat_id}", **_get_style(r3), **_get_icon("5269763170968297861"))

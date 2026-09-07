@@ -12,6 +12,7 @@
 # ❤️ Made with dedication and love by Aaliya Music Bot
 # -----------------------------------------------
 import asyncio
+import hashlib
 import os
 from datetime import datetime, timedelta
 from typing import Union
@@ -313,58 +314,102 @@ class Call(PyTgCalls):
                 autoend[chat_id] = datetime.now() + timedelta(minutes=1)
 
     _autoplay_history: dict = {}
+    _autoplay_reserved: dict = {}  # chat_id -> True once the next song is already queued ahead of time
+
+    async def _pick_gameover_track(self, chat_id: int, seed_title: str):
+        """Ask GameOver's Autoplay Vibe Engine for the curated 'up next' list for
+        the currently playing song and resolve the first fresh (not-recently-played)
+        candidate straight to a playable stream_url — no download needed."""
+        from SIMPLE_MUSIC.platforms.Youtube import gameover_autoplay, resolve_gameover_by_url
+
+        history = self._autoplay_history.setdefault(chat_id, [])
+        tracks = await gameover_autoplay(seed_title) or []
+        for track in tracks:
+            norm_title = " ".join(str(track.get("title") or "").split()).lower()
+            if not norm_title or norm_title in history:
+                continue
+            resolve_url = track.get("resolve_url_title") or track.get("resolve_url")
+            if not resolve_url:
+                continue
+            resolved = await resolve_gameover_by_url(resolve_url)
+            if resolved and resolved.get("stream_url"):
+                history.append(norm_title)
+                history[:] = history[-15:]  # keep last 15 so a full session doesn't repeat too soon
+                return {
+                    "title": track.get("title") or "Autoplay",
+                    "duration": track.get("duration") or "00:00",
+                    "stream_url": resolved["stream_url"],
+                    "thumbnail": track.get("thumbnail"),
+                }
+        return None
+
+    def _reserved_card(self, index: int, title: str, duration: str, requester: str) -> str:
+        return (
+            "<blockquote>🎉 <b>TRACK RESERVED — PLAYING SOON : #{idx}</b>\n\n"
+            "🎵 <b>SONG :</b> {title}\n"
+            "⏱ <b>LENGTH :</b> {dur} MINS\n"
+            "🙋 <b>REQUESTER :</b> {req}\n\n"
+            "💃 GET READY! YOUR SONG IS COMING UP NEXT.</blockquote>"
+        ).format(idx=index, title=title[:60], dur=duration, req=requester)
+
+    async def reserve_next_autoplay(self, chat_id: int, original_chat_id: int, seed_title: str, requester: str = "Autoplay"):
+        """Proactively fetch + queue ONE autoplay song ahead of time while the
+        current song is still playing, so there's zero gap between tracks."""
+        from SIMPLE_MUSIC.utils.stream.queue import put_queue
+
+        if self._autoplay_reserved.get(chat_id):
+            return False
+        try:
+            track = await self._pick_gameover_track(chat_id, seed_title)
+            if not track:
+                return False
+            vidid = "ga_" + hashlib.md5(track["title"].encode("utf-8", "ignore")).hexdigest()[:10]
+            await put_queue(
+                chat_id, original_chat_id, track["stream_url"],
+                track["title"], track["duration"], "Autoplay", vidid, 0, "audio",
+                image=track.get("thumbnail"),
+            )
+            self._autoplay_reserved[chat_id] = True
+            index = max(len(db.get(chat_id, [])) - 1, 1)
+            await app.send_message(
+                original_chat_id,
+                self._reserved_card(index, track["title"], track["duration"], requester),
+            )
+            return True
+        except Exception:
+            return False
 
     async def _autoplay_next(self, client: PyTgCalls, chat_id: int, popped: dict) -> bool:
-        """Cookie-less autoplay: pick a related song by re-searching the last title and push it into the queue."""
+        """Fires only if a song wasn't already reserved ahead of time (fallback
+        path) — picks + plays the next GameOver autoplay track immediately."""
         try:
-            from SIMPLE_MUSIC.platforms.Youtube import search_youtube_api
             from SIMPLE_MUSIC.utils.stream.queue import put_queue
-            import random as _random
 
-            last_vidid = popped.get("vidid")
             title = popped.get("title") or ""
-            history = self._autoplay_history.setdefault(chat_id, [])
-            if last_vidid and last_vidid not in history:
-                history.append(last_vidid)
-            history[:] = history[-15:]  # keep last 15 so a full playlist isn't repeated too soon
-
-            results = await search_youtube_api(title) or []
-            candidates = [r for r in results if r.get("videoId") and r.get("videoId") not in history]
-            if not candidates:
-                # everything in the search overlaps recent history — fall back to just excluding the last song
-                candidates = [r for r in results if r.get("videoId") and r.get("videoId") != last_vidid]
-            if not candidates:
+            track = await self._pick_gameover_track(chat_id, title)
+            if not track:
                 return False
-            pick = _random.choice(candidates[:5]) if len(candidates) > 1 else candidates[0]
-            vidid = pick["videoId"]
-            new_title = pick.get("title", "Autoplay")
-            duration_min = pick.get("durationText") or "00:00"
-            history.append(vidid)
+            vidid = "ga_" + hashlib.md5(track["title"].encode("utf-8", "ignore")).hexdigest()[:10]
 
-            original_chat_id = popped.get("chat_id")
-            try:
-                file_path, direct = await YouTube.download(vidid, None, videoid=True, video=None)
-            except Exception:
-                return False
-            if not file_path:
-                return False
-
-            stream_obj = self._build_stream(file_path, video=False)
+            stream_obj = self._build_stream(track["stream_url"], video=False)
             try:
                 await self._play_on_assistant(client, chat_id, stream_obj)
             except Exception:
                 return False
 
+            original_chat_id = popped.get("chat_id")
             await put_queue(
-                chat_id, original_chat_id, file_path if direct else f"vid_{vidid}",
-                new_title, duration_min, "Autoplay", vidid, popped.get("user_id") or 0, "audio",
+                chat_id, original_chat_id, track["stream_url"],
+                track["title"], track["duration"], "Autoplay", vidid, popped.get("user_id") or 0, "audio",
+                image=track.get("thumbnail"),
             )
             db[chat_id][0]["played"] = 0
-            img = await gen_thumb(vidid, title=new_title, duration=duration_min)
+            self._autoplay_reserved[chat_id] = False
+            img = track.get("thumbnail") or config.STREAM_IMG_URL
             await app.send_photo(
                 chat_id=original_chat_id,
                 photo=img,
-                caption=f"🎶 Autoplay\n\n{new_title[:23]} • {duration_min}",
+                caption=f"🎶 Autoplay\n\n{track['title'][:23]} • {track['duration']}",
             )
             return True
         except Exception:
@@ -410,6 +455,11 @@ class Call(PyTgCalls):
             except Exception:
                 return
         queued = check[0]["file"]
+        self._autoplay_reserved[chat_id] = False
+        if len(check) == 1 and await is_autoplay(chat_id):
+            asyncio.create_task(
+                self.reserve_next_autoplay(chat_id, check[0]["chat_id"], check[0]["title"], "Autoplay")
+            )
         language = await get_lang(chat_id)
         _ = get_string(language)
         title = (check[0]["title"]).title()
@@ -540,7 +590,8 @@ class Call(PyTgCalls):
                 db[chat_id][0]["mystic"] = run
                 db[chat_id][0]["markup"] = "tg"
             else:
-                img = await gen_thumb(videoid, title=title, duration=check[0]["dur"])
+                queue_image = check[0].get("image")
+                img = queue_image if queue_image else await gen_thumb(videoid, title=title, duration=check[0]["dur"])
                 button = stream_markup(_, chat_id)
                 run = await app.send_photo(
                     chat_id=original_chat_id,

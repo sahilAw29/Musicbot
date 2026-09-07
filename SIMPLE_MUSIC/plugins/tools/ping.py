@@ -23,7 +23,7 @@ from SIMPLE_MUSIC.core.call import SIMPLE
 from SIMPLE_MUSIC.utils import bot_sys_stats
 from SIMPLE_MUSIC.utils.decorators.language import language
 from SIMPLE_MUSIC.utils.inline import supp_markup
-from config import BANNED_USERS, PING_IMG_URL
+from config import BANNED_USERS
 
 STYLES = [
     enums.ButtonStyle.PRIMARY,
@@ -41,7 +41,7 @@ def _get_style(style_val):
 async def ping_com(client, message: Message, _):
     start = datetime.now()
     response = await message.reply_photo(
-        PING_IMG_URL,
+        config.PING_IMG_URL,
         caption=_["ping_1"].format(app.mention),
     )
     pytgping = await SIMPLE.ping()
