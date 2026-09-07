@@ -336,6 +336,14 @@ async def del_back_playlist(client, CallbackQuery, _):
                 if popped:
                     await auto_clean(popped)
                 if not check:
+                    if await SIMPLE.try_autoplay_on_empty(chat_id, popped):
+                        try:
+                            await CallbackQuery.edit_message_text(
+                                f"➻ sᴛʀᴇᴀᴍ sᴋɪᴩᴩᴇᴅ 🎄\n│ \n└ʙʏ : {mention} <emoji id='5208923808169222461'>🥀</emoji>"
+                            )
+                        except Exception:
+                            pass
+                        return
                     await CallbackQuery.edit_message_text(
                         f"➻ sᴛʀᴇᴀᴍ sᴋɪᴩᴩᴇᴅ 🎄\n│ \n└ʙʏ : {mention} <emoji id='5208923808169222461'>🥀</emoji>"
                     )

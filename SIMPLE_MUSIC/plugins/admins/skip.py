@@ -53,6 +53,8 @@ async def skip(cli, message: Message, _, chat_id):
                             if popped:
                                 await auto_clean(popped)
                             if not check:
+                                if await SIMPLE.try_autoplay_on_empty(chat_id, popped):
+                                    return
                                 try:
                                     await message.reply_text(
                                         text=_["admin_6"].format(
@@ -81,6 +83,8 @@ async def skip(cli, message: Message, _, chat_id):
             if popped:
                 await auto_clean(popped)
             if not check:
+                if await SIMPLE.try_autoplay_on_empty(chat_id, popped):
+                    return
                 await message.reply_text(
                     text=_["admin_6"].format(
                         message.from_user.mention, message.chat.title

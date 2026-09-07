@@ -260,6 +260,19 @@ class Call(PyTgCalls):
         stream = self._build_stream(link, video=bool(video))
         await self._play_on_assistant(assistant, chat_id, stream)
 
+    async def try_autoplay_on_empty(self, chat_id: int, popped: dict) -> bool:
+        """Call this whenever a manual action (skip/stop/etc.) just emptied the
+        queue, BEFORE leaving the call — lets /autoplay keep the music going
+        the same way it does when a song ends naturally. Returns True if it
+        picked up and is now playing something (caller should NOT leave)."""
+        if not popped or not await is_autoplay(chat_id):
+            return False
+        try:
+            assistant = await group_assistant(self, chat_id)
+        except Exception:
+            return False
+        return await self._autoplay_next(assistant, chat_id, popped)
+
     async def seek_stream(self, chat_id, file_path, to_seek, duration, mode):
         assistant = await group_assistant(self, chat_id)
         ffmpeg = f"-ss {to_seek} -to {duration}"
