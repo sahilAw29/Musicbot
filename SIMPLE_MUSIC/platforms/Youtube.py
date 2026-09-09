@@ -67,7 +67,8 @@ import config
 from config import (API_URL, VIDEO_API_URL, API_KEY, YT_API_KEY, YTPROXY_URL,
                     VDA_API_URL, VDA_API_KEY, VDA_AUDIO_QUALITY, VDA_VIDEO_FORMAT,
                     YT_SEARCH_API_URL, VDA_KEYS_URL, GAMEOVER_API_URL, GAMEOVER_API_KEY,
-                    GAMEOVER_AUTOPLAY_URL)
+                    GAMEOVER_AUTOPLAY_URL, GAMEOVER_PLAYLIST_URL, GAMEOVER_AUTOPLAY_PLAYLIST,
+                    GAMEOVER_AUTOPLAY_BATCH_SIZE)
 
 DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
@@ -229,6 +230,29 @@ async def gameover_autoplay(song_query: str):
             GAMEOVER_AUTOPLAY_URL,
             params={"key": GAMEOVER_API_KEY, "song": song_query},
             timeout=aiohttp.ClientTimeout(total=12, sock_connect=4, sock_read=8),
+        ) as response:
+            if response.status != 200:
+                return []
+            data = await response.json(content_type=None)
+        if isinstance(data, dict) and data.get("status") == "success":
+            return data.get("tracks") or []
+    except Exception:
+        pass
+    return []
+
+
+async def gameover_playlist(playlist_url: str, limit: int):
+    """Pulls a batch of tracks (real video_id + resolve_url each) straight
+    from a curated YouTube playlist via GameOver's Ultra Engine. Used as the
+    endless supply for /autoplay — raising `limit` just returns more tracks
+    from the same underlying playlist, so this can never 'run dry': call it
+    again with a bigger limit whenever the pool is running low."""
+    try:
+        session = await get_session()
+        async with session.get(
+            GAMEOVER_PLAYLIST_URL,
+            params={"key": GAMEOVER_API_KEY, "url": playlist_url, "limit": str(limit)},
+            timeout=aiohttp.ClientTimeout(total=15, sock_connect=4, sock_read=10),
         ) as response:
             if response.status != 200:
                 return []

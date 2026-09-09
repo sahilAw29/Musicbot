@@ -49,6 +49,14 @@ async def autoplay_enable_cb(client, callback_query):
         "Current status: <b>ON ✅</b>",
         reply_markup=_autoplay_markup(True),
     )
+    from SIMPLE_MUSIC.core.call import SIMPLE
+    from SIMPLE_MUSIC.misc import db
+    check = db.get(chat_id)
+    if check and len(check) == 1:
+        import asyncio
+        asyncio.create_task(
+            SIMPLE.reserve_next_autoplay(chat_id, check[0]["chat_id"], check[0]["title"], "Autoplay")
+        )
 
 
 @app.on_callback_query(filters.regex("^autoplay_disable$") & ~BANNED_USERS)
@@ -70,9 +78,10 @@ async def autoplay_disable_cb(client, callback_query):
 async def autoplay_info_cb(client, callback_query):
     await callback_query.answer(
         "ℹ️ How Autoplay works?\n\n"
-        "• Automatically continues music playback.\n"
-        "• Follows current audio or video mode.\n"
-        "• Designed for seamless listening.\n\n"
+        "• When the queue runs out, it picks a fresh song automatically.\n"
+        "• If someone adds a song with /play, that plays FIRST — "
+        "autoplay only resumes once your queue is empty again.\n"
+        "• Never repeats a recently played song.\n\n"
         "🎶 Sit back & enjoy the music.",
         show_alert=True,
     )

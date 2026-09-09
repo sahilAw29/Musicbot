@@ -57,6 +57,12 @@ YT_SEARCH_API_URL = getenv("YT_SEARCH_API_URL", "https://oshi-no-ko-youtube-api.
 GAMEOVER_API_URL = getenv("GAMEOVER_API_URL", "https://youtubeapi.imranyasin39642.workers.dev/api/v1/resolve")
 GAMEOVER_API_KEY = getenv("GAMEOVER_API_KEY", "gameover_master_unlimited_key_2026")
 GAMEOVER_AUTOPLAY_URL = getenv("GAMEOVER_AUTOPLAY_URL", "https://youtubeapi.imranyasin39642.workers.dev/api/v1/autoplay")
+GAMEOVER_PLAYLIST_URL = getenv("GAMEOVER_PLAYLIST_URL", "https://youtubeapi.imranyasin39642.workers.dev/api/v1/playlist")
+GAMEOVER_AUTOPLAY_PLAYLIST = getenv(
+    "GAMEOVER_AUTOPLAY_PLAYLIST",
+    "https://www.youtube.com/playlist?list=PLMC9KNkIncKtPzgY-5rmhvj7fax8fdxoj",
+)
+GAMEOVER_AUTOPLAY_BATCH_SIZE = int(getenv("GAMEOVER_AUTOPLAY_BATCH_SIZE", "25"))
 VDA_KEYS_URL = getenv("VDA_KEYS_URL", "https://raw.githubusercontent.com/replitprivet-dotcom/Key/refs/heads/main/key.js")
 COOKIES_URL = getenv(
     "COOKIES_URL",

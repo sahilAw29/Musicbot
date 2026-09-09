@@ -22,6 +22,7 @@ from SIMPLE_MUSIC.utils.database import (
     get_lang,
     get_upvote_count,
     is_active_chat,
+    is_autoplay,
     is_music_playing,
     is_nonadmin_chat,
     music_off,
@@ -375,6 +376,11 @@ async def del_back_playlist(client, CallbackQuery, _):
             txt = f"➻ sᴛʀᴇᴀᴍ ʀᴇ-ᴘʟᴀʏᴇᴅ 🎄\n│ \n└ʙʏ : {mention} <emoji id='5208923808169222461'>🥀</emoji>"
         await CallbackQuery.answer()
         queued = check[0]["file"]
+        SIMPLE._autoplay_reserved[chat_id] = False
+        if len(check) == 1 and await is_autoplay(chat_id):
+            asyncio.create_task(
+                SIMPLE.reserve_next_autoplay(chat_id, check[0]["chat_id"], check[0]["title"], "Autoplay")
+            )
         title = (check[0]["title"]).title()
         user = check[0]["by"]
         duration = check[0]["dur"]

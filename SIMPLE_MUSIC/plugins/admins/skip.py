@@ -14,11 +14,12 @@
 from pyrogram import filters
 from pyrogram.types import InlineKeyboardMarkup, Message
 
+import asyncio
 import config
 from SIMPLE_MUSIC import YouTube, app
 from SIMPLE_MUSIC.core.call import SIMPLE
 from SIMPLE_MUSIC.misc import db
-from SIMPLE_MUSIC.utils.database import get_loop
+from SIMPLE_MUSIC.utils.database import get_loop, is_autoplay
 from SIMPLE_MUSIC.utils.decorators import AdminRightsCheck
 from SIMPLE_MUSIC.utils.inline import close_markup, stream_markup
 from SIMPLE_MUSIC.utils.stream.autoclear import auto_clean
@@ -107,6 +108,11 @@ async def skip(cli, message: Message, _, chat_id):
             except:
                 return
     queued = check[0]["file"]
+    SIMPLE._autoplay_reserved[chat_id] = False
+    if len(check) == 1 and await is_autoplay(chat_id):
+        asyncio.create_task(
+            SIMPLE.reserve_next_autoplay(chat_id, check[0]["chat_id"], check[0]["title"], "Autoplay")
+        )
     title = (check[0]["title"]).title()
     user = check[0]["by"]
     streamtype = check[0]["streamtype"]

@@ -12,7 +12,6 @@
 # ❤️ Made with dedication and love by Aaliya Music Bot
 # -----------------------------------------------
 import asyncio
-import hashlib
 import os
 from datetime import datetime, timedelta
 from typing import Union
@@ -265,13 +264,20 @@ class Call(PyTgCalls):
         queue, BEFORE leaving the call — lets /autoplay keep the music going
         the same way it does when a song ends naturally. Returns True if it
         picked up and is now playing something (caller should NOT leave)."""
-        if not popped or not await is_autoplay(chat_id):
+        if not popped:
+            LOGGER(__name__).warning(f"[autoplay] try_autoplay_on_empty: no 'popped' entry for chat {chat_id}")
+            return False
+        if not await is_autoplay(chat_id):
+            LOGGER(__name__).info(f"[autoplay] disabled for chat {chat_id}, not attempting")
             return False
         try:
             assistant = await group_assistant(self, chat_id)
         except Exception:
+            LOGGER(__name__).exception(f"[autoplay] group_assistant lookup failed for chat {chat_id}")
             return False
-        return await self._autoplay_next(assistant, chat_id, popped)
+        result = await self._autoplay_next(assistant, chat_id, popped)
+        LOGGER(__name__).info(f"[autoplay] try_autoplay_on_empty result for chat {chat_id}: {result}")
+        return result
 
     async def seek_stream(self, chat_id, file_path, to_seek, duration, mode):
         assistant = await group_assistant(self, chat_id)
@@ -328,32 +334,71 @@ class Call(PyTgCalls):
 
     _autoplay_history: dict = {}
     _autoplay_reserved: dict = {}  # chat_id -> True once the next song is already queued ahead of time
+    _autoplay_pool: dict = {}      # chat_id -> {"tracks": [...], "index": 0, "limit": 0}
 
-    async def _pick_gameover_track(self, chat_id: int, seed_title: str):
-        """Ask GameOver's Autoplay Vibe Engine for the curated 'up next' list for
-        the currently playing song and resolve the first fresh (not-recently-played)
-        candidate straight to a playable stream_url — no download needed."""
-        from SIMPLE_MUSIC.platforms.Youtube import gameover_autoplay, resolve_gameover_by_url
+    async def _ensure_autoplay_pool(self, chat_id: int):
+        """Keeps a big batch of tracks (real video_id + resolve_url each) pulled
+        straight from a curated playlist. When running low, re-fetches the SAME
+        playlist with a bigger `limit` — that just returns more tracks from it,
+        so the pool can never run dry, no matter how long autoplay runs."""
+        from SIMPLE_MUSIC.platforms.Youtube import gameover_playlist
+
+        pool = self._autoplay_pool.setdefault(chat_id, {"tracks": [], "index": 0, "limit": 0})
+        remaining = len(pool["tracks"]) - pool["index"]
+        if remaining > 3:
+            return pool
+        new_limit = pool["limit"] + config.GAMEOVER_AUTOPLAY_BATCH_SIZE
+        try:
+            tracks = await gameover_playlist(config.GAMEOVER_AUTOPLAY_PLAYLIST, new_limit)
+        except Exception:
+            LOGGER(__name__).exception(f"[autoplay] gameover_playlist(limit={new_limit}) failed for chat {chat_id}")
+            tracks = []
+        if tracks:
+            pool["tracks"] = tracks
+            pool["limit"] = new_limit
+        elif not pool["tracks"]:
+            LOGGER(__name__).warning(f"[autoplay] playlist pool fetch returned nothing for chat {chat_id}")
+        return pool
+
+    async def _pick_pool_track(self, chat_id: int):
+        """Pull the next fresh track out of the pool and resolve it to a
+        playable stream_url. Real video_id in, so thumbnails/captions work
+        exactly like a normal YouTube song."""
+        from SIMPLE_MUSIC.platforms.Youtube import resolve_gameover_by_url
 
         history = self._autoplay_history.setdefault(chat_id, [])
-        tracks = await gameover_autoplay(seed_title) or []
-        for track in tracks:
+        for _attempt in range(60):  # safety cap so a stuck pool can't loop forever
+            pool = await self._ensure_autoplay_pool(chat_id)
+            tracks = pool["tracks"]
+            if pool["index"] >= len(tracks):
+                LOGGER(__name__).warning(f"[autoplay] pool exhausted and could not grow for chat {chat_id}")
+                return None
+            track = tracks[pool["index"]]
+            pool["index"] += 1
+
+            vidid = track.get("video_id")
             norm_title = " ".join(str(track.get("title") or "").split()).lower()
-            if not norm_title or norm_title in history:
+            if not vidid or (norm_title and norm_title in history):
                 continue
-            resolve_url = track.get("resolve_url_title") or track.get("resolve_url")
+            resolve_url = track.get("resolve_url")
             if not resolve_url:
                 continue
-            resolved = await resolve_gameover_by_url(resolve_url)
+            try:
+                resolved = await resolve_gameover_by_url(resolve_url)
+            except Exception:
+                LOGGER(__name__).exception(f"[autoplay] resolve failed for '{track.get('title')}'")
+                continue
             if resolved and resolved.get("stream_url"):
-                history.append(norm_title)
-                history[:] = history[-15:]  # keep last 15 so a full session doesn't repeat too soon
+                if norm_title:
+                    history.append(norm_title)
+                    history[:] = history[-15:]  # keep last 15 so a full session doesn't repeat too soon
                 return {
                     "title": track.get("title") or "Autoplay",
                     "duration": track.get("duration") or "00:00",
                     "stream_url": resolved["stream_url"],
-                    "thumbnail": track.get("thumbnail"),
+                    "vidid": vidid,
                 }
+        LOGGER(__name__).warning(f"[autoplay] gave up after 60 candidates for chat {chat_id}")
         return None
 
     def _reserved_card(self, index: int, title: str, duration: str, requester: str) -> str:
@@ -373,14 +418,13 @@ class Call(PyTgCalls):
         if self._autoplay_reserved.get(chat_id):
             return False
         try:
-            track = await self._pick_gameover_track(chat_id, seed_title)
+            track = await self._pick_pool_track(chat_id)
             if not track:
                 return False
-            vidid = "ga_" + hashlib.md5(track["title"].encode("utf-8", "ignore")).hexdigest()[:10]
+            vidid = track["vidid"]
             await put_queue(
                 chat_id, original_chat_id, track["stream_url"],
                 track["title"], track["duration"], "Autoplay", vidid, 0, "audio",
-                image=track.get("thumbnail"),
             )
             self._autoplay_reserved[chat_id] = True
             index = max(len(db.get(chat_id, [])) - 1, 1)
@@ -390,6 +434,7 @@ class Call(PyTgCalls):
             )
             return True
         except Exception:
+            LOGGER(__name__).exception(f"[autoplay] reserve_next_autoplay failed for chat {chat_id}")
             return False
 
     async def _autoplay_next(self, client: PyTgCalls, chat_id: int, popped: dict) -> bool:
@@ -398,27 +443,26 @@ class Call(PyTgCalls):
         try:
             from SIMPLE_MUSIC.utils.stream.queue import put_queue
 
-            title = popped.get("title") or ""
-            track = await self._pick_gameover_track(chat_id, title)
+            track = await self._pick_pool_track(chat_id)
             if not track:
                 return False
-            vidid = "ga_" + hashlib.md5(track["title"].encode("utf-8", "ignore")).hexdigest()[:10]
+            vidid = track["vidid"]
 
             stream_obj = self._build_stream(track["stream_url"], video=False)
             try:
                 await self._play_on_assistant(client, chat_id, stream_obj)
             except Exception:
+                LOGGER(__name__).exception(f"[autoplay] _play_on_assistant failed for chat {chat_id}")
                 return False
 
             original_chat_id = popped.get("chat_id")
             await put_queue(
                 chat_id, original_chat_id, track["stream_url"],
                 track["title"], track["duration"], "Autoplay", vidid, popped.get("user_id") or 0, "audio",
-                image=track.get("thumbnail"),
             )
             db[chat_id][0]["played"] = 0
             self._autoplay_reserved[chat_id] = False
-            img = track.get("thumbnail") or config.STREAM_IMG_URL
+            img = await gen_thumb(vidid, title=track["title"], duration=track["duration"])
             await app.send_photo(
                 chat_id=original_chat_id,
                 photo=img,
@@ -426,6 +470,7 @@ class Call(PyTgCalls):
             )
             return True
         except Exception:
+            LOGGER(__name__).exception(f"[autoplay] _autoplay_next failed for chat {chat_id}")
             return False
 
     async def change_stream(self, client: PyTgCalls, chat_id: int):

@@ -27,6 +27,17 @@ from SIMPLE_MUSIC.utils.stream.queue import put_queue, put_queue_index
 from SIMPLE_MUSIC.utils.thumbnails import get_thumb
 
 
+def _evict_pending_autoplay(chat_id):
+    """If autoplay had already reserved a track that hasn't started playing
+    yet (sitting at the back of the queue), drop it so a real user request
+    plays next instead — autoplay will simply reserve a fresh one again once
+    the queue thins back out."""
+    check = db.get(chat_id)
+    if check and len(check) > 1 and check[-1].get("by") == "Autoplay":
+        check.pop()
+        SIMPLE._autoplay_reserved[chat_id] = False
+
+
 async def stream(
     _,
     mystic,
@@ -65,6 +76,7 @@ async def stream(
             if duration_sec > config.DURATION_LIMIT:
                 continue
             if await is_active_chat(chat_id):
+                _evict_pending_autoplay(chat_id)
                 await put_queue(
                     chat_id,
                     original_chat_id,
@@ -152,6 +164,7 @@ async def stream(
         except:
             raise AssistantErr(_["play_14"])
         if await is_active_chat(chat_id):
+            _evict_pending_autoplay(chat_id)
             await put_queue(
                 chat_id,
                 original_chat_id,
@@ -214,6 +227,7 @@ async def stream(
         title = result["title"]
         duration_min = result["duration_min"]
         if await is_active_chat(chat_id):
+            _evict_pending_autoplay(chat_id)
             await put_queue(
                 chat_id,
                 original_chat_id,
@@ -267,6 +281,7 @@ async def stream(
         cover_image = result.get("image")
         status = True if video else None
         if await is_active_chat(chat_id):
+            _evict_pending_autoplay(chat_id)
             await put_queue(
                 chat_id,
                 original_chat_id,
@@ -324,6 +339,7 @@ async def stream(
         duration_min = "Live Track"
         status = True if video else None
         if await is_active_chat(chat_id):
+            _evict_pending_autoplay(chat_id)
             await put_queue(
                 chat_id,
                 original_chat_id,
@@ -389,6 +405,7 @@ async def stream(
         title = "ɪɴᴅᴇx ᴏʀ ᴍ3ᴜ8 ʟɪɴᴋ"
         duration_min = "00:00"
         if await is_active_chat(chat_id):
+            _evict_pending_autoplay(chat_id)
             await put_queue_index(
                 chat_id,
                 original_chat_id,
