@@ -360,6 +360,25 @@ class Call(PyTgCalls):
             LOGGER(__name__).warning(f"[autoplay] playlist pool fetch returned nothing for chat {chat_id}")
         return pool
 
+    _NOISE_WORDS = {
+        "official", "video", "audio", "lyrics", "lyric", "music", "ft", "feat",
+        "featuring", "hd", "hq", "the", "a", "an", "mv", "visualizer", "song",
+        "prod", "remix", "version", "edit",
+    }
+
+    def _titles_relate(self, title_a: str, title_b: str) -> bool:
+        """Loose sanity check: do these two titles share at least one real
+        keyword? Guards against the resolve API silently substituting an
+        unrelated track for a blocked/unavailable one."""
+        def keywords(t):
+            words = "".join(c if c.isalnum() else " " for c in t.lower()).split()
+            return {w for w in words if len(w) > 2 and w not in self._NOISE_WORDS}
+
+        a, b = keywords(title_a), keywords(title_b)
+        if not a or not b:
+            return True  # not enough to judge — don't block on it
+        return bool(a & b)
+
     async def _pick_pool_track(self, chat_id: int):
         """Pull the next fresh track out of the pool and resolve it to a
         playable stream_url. Real video_id in, so thumbnails/captions work
@@ -389,12 +408,22 @@ class Call(PyTgCalls):
                 LOGGER(__name__).exception(f"[autoplay] resolve failed for '{track.get('title')}'")
                 continue
             if resolved and resolved.get("stream_url"):
+                confirmed_title = resolved.get("title") or track.get("title") or "Autoplay"
+                if norm_title and not self._titles_relate(norm_title, confirmed_title):
+                    LOGGER(__name__).warning(
+                        f"[autoplay] resolve mismatch, skipping: wanted '{track.get('title')}' got '{confirmed_title}'"
+                    )
+                    continue
                 if norm_title:
                     history.append(norm_title)
                     history[:] = history[-15:]  # keep last 15 so a full session doesn't repeat too soon
+                # Use what the resolve engine actually confirms it fetched —
+                # not the playlist's guess — so the caption never shows a
+                # different song than what's really playing.
+                confirmed_duration = resolved.get("duration") or track.get("duration") or "00:00"
                 return {
-                    "title": track.get("title") or "Autoplay",
-                    "duration": track.get("duration") or "00:00",
+                    "title": confirmed_title,
+                    "duration": confirmed_duration,
                     "stream_url": resolved["stream_url"],
                     "vidid": vidid,
                 }
@@ -462,12 +491,20 @@ class Call(PyTgCalls):
             )
             db[chat_id][0]["played"] = 0
             self._autoplay_reserved[chat_id] = False
-            img = await gen_thumb(vidid, title=track["title"], duration=track["duration"])
-            await app.send_photo(
+
+            language = await get_lang(chat_id)
+            _ = get_string(language)
+            title = track["title"].title()[:23]
+            img = await gen_thumb(vidid, title=title, duration=track["duration"])
+            button = stream_markup(_, chat_id)
+            run = await app.send_photo(
                 chat_id=original_chat_id,
                 photo=img,
-                caption=f"🎶 Autoplay\n\n{track['title'][:23]} • {track['duration']}",
+                caption=stream_caption(title, track["duration"], "Autoplay"),
+                reply_markup=InlineKeyboardMarkup(button),
             )
+            db[chat_id][0]["mystic"] = run
+            db[chat_id][0]["markup"] = "tg"
             return True
         except Exception:
             LOGGER(__name__).exception(f"[autoplay] _autoplay_next failed for chat {chat_id}")
