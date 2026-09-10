@@ -54,9 +54,6 @@ from strings import get_string
 checker = {}
 upvoters = {}
 
-# --- AUTOPLAY DATABASE SIMULATION ---
-autoplay_db = {}
-
 @app.on_callback_query(filters.regex("unban_assistant"))
 async def unban_assistant(_, callback: CallbackQuery):
     chat_id = callback.message.chat.id
@@ -67,46 +64,6 @@ async def unban_assistant(_, callback: CallbackQuery):
         await callback.answer("𝗠𝘆 𝗔𝘀𝘀𝗶𝘀𝘁𝗮𝗻𝘁 𝗜𝗱 𝗨𝗻𝗯𝗮𝗻𝗻𝗲𝗱 𝗦𝘂𝗰𝗰𝗲𝘀𝘀𝗳𝘂𝗹𝗹𝘆<emoji id='5317026657540780588'>🥳</emoji>\n\n➻ 𝗡𝗼𝘄 𝗬𝗼𝘂 𝗖𝗮𝗻 𝗣𝗹𝗮𝘆 𝗦𝗼𝗻𝗴𝘀🔉\n\n𝗧𝗵𝗮𝗻𝗸 𝗬𝗼𝘂<emoji id='6172702452073108469'>💝</emoji>", show_alert=True)
     except Exception as e:
         await callback.answer(f"𝙁𝙖𝙞𝙡𝙚𝙙 𝙏𝙤 𝙐𝙣𝙗𝙖𝙣 𝙈𝙮 𝘼𝙨𝙨𝙞𝙨𝙩𝙖𝙣𝙩 𝘽𝙚𝙘𝙖𝙪𝙨𝙚 𝙄 𝘿𝙤𝙣't 𝙃𝙖𝙫𝙚 𝘽𝙖𝙣 𝙋𝙤𝙬𝙚𝙧\n\n➻ 𝙋𝙡𝙚𝙖𝙨𝙚 𝙋𝙧𝙤𝙫𝙞𝙙𝙚 𝙈𝙚 𝘽𝙖𝙣 𝙋𝙤𝙬𝙚𝙧 𝙎𝙤 𝙏𝙝𝙖𝙩 𝙄 𝙘𝙖𝙣 𝙐𝙣𝙗𝙖𝙣 𝙈𝙮 𝘼𝙨𝙨𝙞𝙨𝙩𝙖𝙣𝙩 𝙄𝙙", show_alert=True)
-
-
-# 🟢 1. AUTOPLAY TOGGLE HANDLER (ON/OFF)
-@app.on_callback_query(filters.regex("AutoplayToggle") & ~BANNED_USERS)
-async def autoplay_toggle_callback(_, callback_query: CallbackQuery):
-    chat_id = int(callback_query.data.split()[1])
-    
-    # Admin verification
-    is_non_admin = await is_nonadmin_chat(callback_query.message.chat.id)
-    if not is_non_admin and callback_query.from_user.id not in SUDOERS:
-        admins = adminlist.get(callback_query.message.chat.id)
-        if not admins or callback_query.from_user.id not in admins:
-            return await callback_query.answer("Aapke paas admin rights nahi hain.", show_alert=True)
-            
-    current_state = autoplay_db.get(chat_id, False)
-    new_state = not current_state
-    autoplay_db[chat_id] = new_state
-    
-    status_text = "Autoplay Enabled (ON) <emoji id='6082375377123023700'>✅</emoji>" if new_state else "Autoplay Disabled (OFF) ❌"
-    await callback_query.answer(status_text, show_alert=True)
-    
-    # Dynamically update the layout text
-    try:
-        language = await get_lang(chat_id)
-        _ = get_string(language)
-    except:
-        _ = get_string("en")
-        
-    playing = db.get(chat_id)
-    if playing and int(playing[0]["seconds"]) != 0:
-        buttons = stream_markup_timer(_, chat_id, seconds_to_min(playing[0]["played"]), playing[0]["dur"])
-    else:
-        buttons = stream_markup(_, chat_id)
-        
-    # Buttons update logic to reflect toggle instantly if your inline script allows it
-    # Modified button texts can be implemented inside inline/play.py based on autoplay_db state
-    try:
-        await callback_query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
-    except:
-        pass
 
 
 @app.on_callback_query(filters.regex(r"^STREAM_CLOSE\|") & ~BANNED_USERS)

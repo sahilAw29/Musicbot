@@ -45,12 +45,10 @@ def _get_icon(emoji_id: str):
 
 def stream_caption(title, duration, requester):
     return (
-        "<b><emoji id='5388992682875958399'>🎬</emoji> sᴛʀᴇᴀᴍ ʜᴀs sᴛᴀʀᴛᴇᴅ. ᴇɴᴊᴏʏ ᴛʜᴇ ᴍᴜsɪᴄ |</b>\n"
+        "<blockquote><b><emoji id='5388992682875958399'>🎬</emoji> sᴛʀᴇᴀᴍ ʜᴀs sᴛᴀʀᴛᴇᴅ. ᴇɴᴊᴏʏ ᴛʜᴇ ᴍᴜsɪᴄ |</b>\n"
         f"<b><emoji id='5989830505615331276'>🎵</emoji> ᴛɪᴛʟᴇ :</b> {title}\n"
         f"<b><emoji id='5258419835922030550'>🕔</emoji> ʟᴇɴɢᴛʜ :</b> {duration} ᴍɪɴs\n"
-        f"<b><emoji id='5256143829672672750'>👤</emoji>ʀᴇǫᴜᴇsᴛᴇʀ :</b> {requester}\n\n"
-        "<emoji id='5438266304337296696'>⬅️</emoji>10s   <emoji id='5435955998479102657'>➡️</emoji>10s   "
-        "<emoji id='5269763170968297861'>❤️</emoji>"
+        f"<b><emoji id='5256143829672672750'>👤</emoji>ʀᴇǫᴜᴇsᴛᴇʀ :</b> {requester}</blockquote>"
     )
 
 
@@ -149,6 +147,9 @@ def stream_markup(_, chat_id):
             InlineKeyboardButton(text="↻", callback_data=f"ADMIN Replay|{chat_id}", **_get_style(r1)),
             InlineKeyboardButton(text="‣‣I", callback_data=f"ADMIN Skip|{chat_id}", **_get_style(r1)),
             InlineKeyboardButton(text="▢", callback_data=f"ADMIN Stop|{chat_id}", **_get_style(r1)),
+        ],
+        [
+            InlineKeyboardButton(text="🔤 Aᴜᴛᴏᴩʟᴀʏ", callback_data=f"autoplay_toggle {chat_id}", **_get_style(r2), **_get_icon("5411316015915102848")),
         ],
         [
             InlineKeyboardButton(text="10s", callback_data=f"ADMIN Back10|{chat_id}", **_get_style(r1), **_get_icon("5438266304337296696")),

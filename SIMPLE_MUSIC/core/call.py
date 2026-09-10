@@ -12,6 +12,7 @@
 # ❤️ Made with dedication and love by Aaliya Music Bot
 # -----------------------------------------------
 import asyncio
+import hashlib
 import os
 from datetime import datetime, timedelta
 from typing import Union
@@ -107,6 +108,13 @@ class Call(PyTgCalls):
         video: bool,
         ffmpeg: str | None = None,
     ) -> types.MediaStream:
+        # Reconnect flags: if the remote CDN (GameOver stream_url etc.) has a
+        # brief network hiccup, ffmpeg reconnects and keeps feeding audio
+        # instead of the stream stalling/buffering. Harmless no-op for local
+        # files. Any caller-supplied ffmpeg params (seek etc.) are appended
+        # after these so both keep working together.
+        reconnect = "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -reconnect_at_eof 1"
+        combined_ffmpeg = f"{reconnect} {ffmpeg}" if ffmpeg else reconnect
         return types.MediaStream(
             media_path=source,
             audio_parameters=types.AudioQuality.HIGH,
@@ -117,7 +125,7 @@ class Call(PyTgCalls):
                 if video
                 else types.MediaStream.Flags.IGNORE
             ),
-            ffmpeg_parameters=ffmpeg,
+            ffmpeg_parameters=combined_ffmpeg,
         )
 
     async def _play_on_assistant(
@@ -336,6 +344,63 @@ class Call(PyTgCalls):
     _autoplay_reserved: dict = {}  # chat_id -> True once the next song is already queued ahead of time
     _autoplay_pool: dict = {}      # chat_id -> {"tracks": [...], "index": 0, "limit": 0}
 
+    async def _pick_search_track(self, chat_id: int, seed_title: str):
+        """Yukki-style autoplay: plain title search for the currently playing
+        song (own search API, real video_ids — no third-party 'autoplay'
+        dependency), skip anything already played recently, then resolve
+        audio through the exact same download() pipeline normal /play uses."""
+        from SIMPLE_MUSIC.platforms.Youtube import search_youtube_api
+        import random as _random
+
+        history = self._autoplay_history.setdefault(chat_id, [])
+        clean_seed = " ".join(str(seed_title or "").split())
+        try:
+            results = await search_youtube_api(clean_seed) or []
+        except Exception:
+            LOGGER(__name__).exception(f"[autoplay] search_youtube_api('{clean_seed}') failed")
+            results = []
+
+        candidates = [r for r in results if r.get("videoId") and r["videoId"] not in history]
+        if not candidates:
+            candidates = [r for r in results if r.get("videoId")]
+        if not candidates:
+            LOGGER(__name__).warning(f"[autoplay] no search candidates for seed '{clean_seed}'")
+            return None
+
+        pool = candidates[:5]
+        _random.shuffle(pool)
+        for pick in pool:
+            vidid = pick["videoId"]
+            title = pick.get("title") or "Autoplay"
+            duration = pick.get("durationText") or "00:00"
+            try:
+                file_path, _direct = await YouTube.download(vidid, None, videoid=True, video=None)
+            except Exception:
+                LOGGER(__name__).exception(f"[autoplay] download failed for '{title}' ({vidid})")
+                continue
+            if not file_path:
+                continue
+            history.append(vidid)
+            history[:] = history[-15:]  # keep last 15 so a full session doesn't repeat too soon
+            return {
+                "title": title,
+                "duration": duration,
+                "stream_url": file_path,
+                "vidid": vidid,
+                "thumbnail": None,
+            }
+        return None
+
+    async def _pick_next_track(self, chat_id: int, seed_title: str):
+        """Yukki-style search (own pipeline, real video_ids) first — if it's
+        empty or every candidate fails, fall back to the endless curated
+        playlist pool so autoplay never simply stops."""
+        track = await self._pick_search_track(chat_id, seed_title)
+        if track:
+            return track
+        LOGGER(__name__).info(f"[autoplay] search picker had nothing usable, falling back to playlist pool for chat {chat_id}")
+        return await self._pick_pool_track(chat_id)
+
     async def _ensure_autoplay_pool(self, chat_id: int):
         """Keeps a big batch of tracks (real video_id + resolve_url each) pulled
         straight from a curated playlist. When running low, re-fetches the SAME
@@ -426,6 +491,7 @@ class Call(PyTgCalls):
                     "duration": confirmed_duration,
                     "stream_url": resolved["stream_url"],
                     "vidid": vidid,
+                    "thumbnail": None,
                 }
         LOGGER(__name__).warning(f"[autoplay] gave up after 60 candidates for chat {chat_id}")
         return None
@@ -447,20 +513,16 @@ class Call(PyTgCalls):
         if self._autoplay_reserved.get(chat_id):
             return False
         try:
-            track = await self._pick_pool_track(chat_id)
+            track = await self._pick_next_track(chat_id, seed_title)
             if not track:
                 return False
             vidid = track["vidid"]
             await put_queue(
                 chat_id, original_chat_id, track["stream_url"],
                 track["title"], track["duration"], "Autoplay", vidid, 0, "audio",
+                image=track.get("thumbnail"),
             )
             self._autoplay_reserved[chat_id] = True
-            index = max(len(db.get(chat_id, [])) - 1, 1)
-            await app.send_message(
-                original_chat_id,
-                self._reserved_card(index, track["title"], track["duration"], requester),
-            )
             return True
         except Exception:
             LOGGER(__name__).exception(f"[autoplay] reserve_next_autoplay failed for chat {chat_id}")
@@ -468,11 +530,12 @@ class Call(PyTgCalls):
 
     async def _autoplay_next(self, client: PyTgCalls, chat_id: int, popped: dict) -> bool:
         """Fires only if a song wasn't already reserved ahead of time (fallback
-        path) — picks + plays the next GameOver autoplay track immediately."""
+        path) — picks + plays the next autoplay track immediately."""
         try:
             from SIMPLE_MUSIC.utils.stream.queue import put_queue
 
-            track = await self._pick_pool_track(chat_id)
+            seed_title = popped.get("title") or ""
+            track = await self._pick_next_track(chat_id, seed_title)
             if not track:
                 return False
             vidid = track["vidid"]
@@ -488,6 +551,7 @@ class Call(PyTgCalls):
             await put_queue(
                 chat_id, original_chat_id, track["stream_url"],
                 track["title"], track["duration"], "Autoplay", vidid, popped.get("user_id") or 0, "audio",
+                image=track.get("thumbnail"),
             )
             db[chat_id][0]["played"] = 0
             self._autoplay_reserved[chat_id] = False
@@ -495,7 +559,7 @@ class Call(PyTgCalls):
             language = await get_lang(chat_id)
             _ = get_string(language)
             title = track["title"].title()[:23]
-            img = await gen_thumb(vidid, title=title, duration=track["duration"])
+            img = track.get("thumbnail") or await gen_thumb(vidid, title=title, duration=track["duration"])
             button = stream_markup(_, chat_id)
             run = await app.send_photo(
                 chat_id=original_chat_id,

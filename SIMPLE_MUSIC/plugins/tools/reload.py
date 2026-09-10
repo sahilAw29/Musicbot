@@ -150,7 +150,7 @@ async def close_menu(_, query: CallbackQuery):
         await query.answer()
         await query.message.delete()
         umm = await query.message.reply_text(
-            f"ᴄʟᴏꜱᴇ ʙʏ : {query.from_user.mention}"
+            f"<blockquote><emoji id='5424857974784925603'>🚫</emoji> sєssɪση ᴄʟσsєᴅ ʙʏ : {query.from_user.mention}</blockquote>"
         )
         await asyncio.sleep(2)
         await umm.delete()

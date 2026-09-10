@@ -75,12 +75,12 @@ async def send_heart_effect_private(chat_id: int, retries: int = 3):
 async def send_welcome_animation(message: Message):
     """Small 'Welcome Baby' cycling text animation before the real start message."""
     welcome_msgs = [
-        "Wᴇʟᴄᴏᴍᴇ Bᴀʙʏ ꨄ {}.. ⚣",
-        "Wᴇʟᴄᴏᴍᴇ Bᴀʙʏ ꨄ {}.. 🥳",
-        "Wᴇʟᴄᴏᴍᴇ Bᴀʙʏ ꨄ {}.. 💥",
-        "Wᴇʟᴄᴏᴍᴇ Bᴀʙʏ ꨄ {}.. 🤩",
-        "Wᴇʟᴄᴏᴍᴇ Bᴀʙʏ ꨄ {}.. 💌",
-        "Wᴇʟᴄᴏᴍᴇ Bᴀʙʏ ꨄ {}.. 💞",
+        "<emoji id='5411200584374056500'>🎁</emoji> Wᴇʟᴄᴏᴍᴇ Bᴀʙʏ ꨄ {}.. ⚣",
+        "<emoji id='6327605773362794574'>🩷</emoji> Wᴇʟᴄᴏᴍᴇ Bᴀʙʏ ꨄ {}.. 🥳",
+        "<emoji id='5364040533498932357'>💎</emoji> Wᴇʟᴄᴏᴍᴇ Bᴀʙʏ ꨄ {}.. 💥",
+        "<emoji id='6294226146531744488'>💐</emoji> Wᴇʟᴄᴏᴍᴇ Bᴀʙʏ ꨄ {}.. 🤩",
+        "<emoji id='5363992034728229166'>✨</emoji> Wᴇʟᴄᴏᴍᴇ Bᴀʙʏ ꨄ {}.. 💌",
+        "<emoji id='6293832040332664717'>❤️</emoji> Wᴇʟᴄᴏᴍᴇ Bᴀʙʏ ꨄ {}.. 💞",
     ]
     try:
         lol = await message.reply_text(welcome_msgs[0].format(message.from_user.mention))
