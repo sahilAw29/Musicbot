@@ -66,16 +66,34 @@ async def autoplay_toggle_cb(client, callback_query: CallbackQuery):
 
     if await is_autoplay(chat_id):
         await autoplay_off(chat_id)
-        await callback_query.answer("🔤 Aᴜᴛᴏᴩʟᴀʏ : ᴏꜰꜰ ❌", show_alert=True)
-        return
+        await callback_query.answer("Autoplay OFF ❌")
+    else:
+        await autoplay_on(chat_id)
+        await callback_query.answer("Autoplay ON ✅")
 
-    await autoplay_on(chat_id)
-    await callback_query.answer("🔤 Aᴜᴛᴏᴩʟᴀʏ : ᴏɴ ✔️", show_alert=True)
+        from SIMPLE_MUSIC.core.call import SIMPLE
+        from SIMPLE_MUSIC.misc import db
+        check = db.get(chat_id)
+        if check and len(check) == 1:
+            asyncio.create_task(
+                SIMPLE.reserve_next_autoplay(chat_id, check[0]["chat_id"], check[0]["title"], "Autoplay")
+            )
 
-    from SIMPLE_MUSIC.core.call import SIMPLE
-    from SIMPLE_MUSIC.misc import db
-    check = db.get(chat_id)
-    if check and len(check) == 1:
-        asyncio.create_task(
-            SIMPLE.reserve_next_autoplay(chat_id, check[0]["chat_id"], check[0]["title"], "Autoplay")
-        )
+    try:
+        from pyrogram.types import InlineKeyboardMarkup
+        from SIMPLE_MUSIC.misc import db
+        from SIMPLE_MUSIC.utils.database import get_lang
+        from SIMPLE_MUSIC.utils.formatters import seconds_to_min
+        from SIMPLE_MUSIC.utils.inline.play import stream_markup, stream_markup_timer
+        from strings import get_string
+
+        language = await get_lang(chat_id)
+        _ = get_string(language)
+        playing = db.get(chat_id)
+        if playing and int(playing[0].get("seconds", 0)) != 0:
+            buttons = await stream_markup_timer(_, chat_id, seconds_to_min(playing[0]["played"]), playing[0]["dur"])
+        else:
+            buttons = await stream_markup(_, chat_id)
+        await callback_query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
+    except Exception:
+        pass

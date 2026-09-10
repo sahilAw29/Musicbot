@@ -17,6 +17,7 @@ import config
 from pyrogram import enums
 from pyrogram.types import InlineKeyboardButton
 from SIMPLE_MUSIC import app
+from SIMPLE_MUSIC.utils.database import is_autoplay
 from SIMPLE_MUSIC.utils.formatters import time_to_seconds
 
 STYLES = [
@@ -71,7 +72,13 @@ def track_markup(_, videoid, user_id, channel, fplay):
     return buttons
 
 
-def stream_markup_timer(_, chat_id, played, dur):
+async def _autoplay_label(chat_id) -> str:
+    if await is_autoplay(chat_id):
+        return "🔤 Aᴜᴛᴏᴩʟᴀʏ : ᴏɴ ✔️"
+    return "🔤 Aᴜᴛᴏᴩʟᴀʏ : ᴏꜰꜰ ❌"
+
+
+async def stream_markup_timer(_, chat_id, played, dur):
     played_sec = time_to_seconds(played)
     duration_sec = time_to_seconds(dur)
 
@@ -125,6 +132,9 @@ def stream_markup_timer(_, chat_id, played, dur):
             InlineKeyboardButton(text="▢", callback_data=f"ADMIN Stop|{chat_id}", **_get_style(r2)),
         ],
         [
+            InlineKeyboardButton(text=await _autoplay_label(chat_id), callback_data=f"autoplay_toggle {chat_id}", **_get_style(r2), **_get_icon("5411316015915102848")),
+        ],
+        [
             InlineKeyboardButton(text="10s", callback_data=f"ADMIN Back10|{chat_id}", **_get_style(r2), **_get_icon("5438266304337296696")),
             InlineKeyboardButton(text="10s", callback_data=f"ADMIN Fwd10|{chat_id}", **_get_style(r2), **_get_icon("5435955998479102657")),
         ],
@@ -135,7 +145,7 @@ def stream_markup_timer(_, chat_id, played, dur):
     return buttons
 
 
-def stream_markup(_, chat_id):
+async def stream_markup(_, chat_id):
     r1, r2, r3 = random.choices(STYLES, k=3)
     buttons = [
         [
@@ -149,7 +159,7 @@ def stream_markup(_, chat_id):
             InlineKeyboardButton(text="▢", callback_data=f"ADMIN Stop|{chat_id}", **_get_style(r1)),
         ],
         [
-            InlineKeyboardButton(text="🔤 Aᴜᴛᴏᴩʟᴀʏ", callback_data=f"autoplay_toggle {chat_id}", **_get_style(r2), **_get_icon("5411316015915102848")),
+            InlineKeyboardButton(text=await _autoplay_label(chat_id), callback_data=f"autoplay_toggle {chat_id}", **_get_style(r2), **_get_icon("5411316015915102848")),
         ],
         [
             InlineKeyboardButton(text="10s", callback_data=f"ADMIN Back10|{chat_id}", **_get_style(r1), **_get_icon("5438266304337296696")),
