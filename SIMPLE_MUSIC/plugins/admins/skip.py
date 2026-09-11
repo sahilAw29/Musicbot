@@ -17,7 +17,7 @@ from pyrogram.types import InlineKeyboardMarkup, Message
 import asyncio
 import config
 from SIMPLE_MUSIC import YouTube, app
-from SIMPLE_MUSIC.core.call import SIMPLE
+from SIMPLE_MUSIC.core.call import SIMPLE, _clear_
 from SIMPLE_MUSIC.misc import db
 from SIMPLE_MUSIC.utils.database import get_loop, is_autoplay
 from SIMPLE_MUSIC.utils.decorators import AdminRightsCheck
@@ -56,18 +56,9 @@ async def skip(cli, message: Message, _, chat_id):
                             if not check:
                                 if await SIMPLE.try_autoplay_on_empty(chat_id, popped):
                                     return
-                                try:
-                                    await message.reply_text(
-                                        text=_["admin_6"].format(
-                                            message.from_user.mention,
-                                            message.chat.title,
-                                        ),
-                                        reply_markup=close_markup(_),
-                                    )
-                                    await SIMPLE.stop_stream(chat_id)
-                                except:
-                                    return
-                                break
+                                await _clear_(chat_id)
+                                await SIMPLE.show_no_more_songs_card(chat_id, popped)
+                                return
                     else:
                         return await message.reply_text(_["admin_11"].format(count))
                 else:
@@ -86,16 +77,9 @@ async def skip(cli, message: Message, _, chat_id):
             if not check:
                 if await SIMPLE.try_autoplay_on_empty(chat_id, popped):
                     return
-                await message.reply_text(
-                    text=_["admin_6"].format(
-                        message.from_user.mention, message.chat.title
-                    ),
-                    reply_markup=close_markup(_),
-                )
-                try:
-                    return await SIMPLE.stop_stream(chat_id)
-                except:
-                    return
+                await _clear_(chat_id)
+                await SIMPLE.show_no_more_songs_card(chat_id, popped)
+                return
         except:
             try:
                 await message.reply_text(

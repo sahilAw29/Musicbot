@@ -15,7 +15,7 @@ import asyncio
 from pyrogram import filters
 from pyrogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from SIMPLE_MUSIC import YouTube, app
-from SIMPLE_MUSIC.core.call import SIMPLE
+from SIMPLE_MUSIC.core.call import SIMPLE, _clear_
 from SIMPLE_MUSIC.misc import SUDOERS, db
 from SIMPLE_MUSIC.utils.database import (
     get_active_chats,
@@ -305,16 +305,9 @@ async def del_back_playlist(client, CallbackQuery, _):
                     await CallbackQuery.edit_message_text(
                         f"➻ sᴛʀᴇᴀᴍ sᴋɪᴩᴩᴇᴅ 🎄\n│ \n└ʙʏ : {mention} <emoji id='5208923808169222461'>🥀</emoji>"
                     )
-                    await CallbackQuery.message.reply_text(
-                        text=_["admin_6"].format(
-                            mention, CallbackQuery.message.chat.title
-                        ),
-                        reply_markup=close_markup(_),
-                    )
-                    try:
-                        return await SIMPLE.stop_stream(chat_id)
-                    except:
-                        return
+                    await _clear_(chat_id)
+                    await SIMPLE.show_no_more_songs_card(chat_id, popped)
+                    return
             except:
                 try:
                     await CallbackQuery.edit_message_text(

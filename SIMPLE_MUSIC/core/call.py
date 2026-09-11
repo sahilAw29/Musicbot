@@ -19,7 +19,7 @@ from typing import Union
 from ntgcalls import ConnectionNotFound, TelegramServerError
 from pyrogram import Client
 from pyrogram.enums import ParseMode
-from pyrogram.types import InlineKeyboardMarkup
+from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from pytgcalls import PyTgCalls, exceptions, types
 from pytgcalls.pytgcalls_session import PyTgCallsSession
 import config
@@ -287,6 +287,34 @@ class Call(PyTgCalls):
         LOGGER(__name__).info(f"[autoplay] try_autoplay_on_empty result for chat {chat_id}: {result}")
         return result
 
+    async def show_no_more_songs_card(self, chat_id: int, popped: dict):
+        """Queue is empty and autoplay didn't/couldn't pick anything up —
+        instead of leaving immediately, stay connected and show a card with
+        a one-tap Autoplay button that searches + plays right away."""
+        original_chat_id = (popped or {}).get("chat_id") or chat_id
+        self._pending_seed[chat_id] = {
+            "title": (popped or {}).get("title") or "",
+            "vidid": (popped or {}).get("vidid"),
+            "chat_id": original_chat_id,
+            "user_id": (popped or {}).get("user_id") or 0,
+        }
+        try:
+            await app.send_message(
+                original_chat_id,
+                "<blockquote><emoji id='6147943438785449262'>🎵</emoji> <b>Nᴏ Mᴏʀᴇ Sᴏɴɢs ɪɴ ᴛʜᴇ Qᴜᴇᴜᴇ</b>\n"
+                "ᴛʜᴇ ᴘʟᴀʏʟɪsᴛ ʜᴀs ᴇɴᴅᴇᴅ — ʜɪᴛ ᴀᴜᴛᴏᴘʟᴀʏ ᴛᴏ ᴋᴇᴇᴘ ᴛʜᴇ ᴍᴜsɪᴄ ɢᴏɪɴɢ.</blockquote>",
+                parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup(
+                    [[InlineKeyboardButton(
+                        text="Aᴜᴛᴏᴩʟᴀʏ",
+                        callback_data=f"autoplay_search_now {chat_id}",
+                        **({"icon_custom_emoji_id": "5258334469152054985"} if getattr(config, "BUTTON_ICON", False) else {}),
+                    )]]
+                ),
+            )
+        except Exception:
+            pass
+
     async def seek_stream(self, chat_id, file_path, to_seek, duration, mode):
         assistant = await group_assistant(self, chat_id)
         ffmpeg = f"-ss {to_seek} -to {duration}"
@@ -342,6 +370,7 @@ class Call(PyTgCalls):
 
     _autoplay_history: dict = {}
     _autoplay_reserved: dict = {}  # chat_id -> True once the next song is already queued ahead of time
+    _pending_seed: dict = {}       # chat_id -> {"title","vidid","chat_id","user_id"} of the last song, kept for the "No More Songs" card's Autoplay button
     _autoplay_pool: dict = {}      # chat_id -> {"tracks": [...], "index": 0, "limit": 0}
 
     async def _pick_related_track(self, chat_id: int, seed_vidid: str):
@@ -644,22 +673,9 @@ class Call(PyTgCalls):
                     if queued:
                         return
                 await _clear_(chat_id)
-                try:
-                    original_chat_id = popped["chat_id"] if popped else chat_id
-                    await app.send_message(
-                        original_chat_id,
-                        "<blockquote><emoji id='6325715141643997191'>❤️</emoji> ╭── [ ǫᴜꫀᴜꫀ ꫀꪑᴘᴛʏ ]\n"
-                        "│\n"
-                        "├── <emoji id='5422559269633421747'>💐</emoji> ⇛ ʙꫝʙʏ ɢꫝꫝꪀꫀ ᴋʜꫝᴛꫝꪑ ʜꪮ ɢꫝʏꫀ ʜꫝɪꪀ!\n"
-                        "│\n"
-                        "├── <emoji id='5278477152805729495'>🐇</emoji> ⇛ ꫝᴜʀ ꜱᴜꪀꪀꫝ ʜꫝɪ ᴛꪮ ꪀɪᥴʜꫀ ᥴʟɪᥴᴋ ᴋꫝʀꪮ...\n"
-                        "│\n"
-                        "<emoji id='5422609769858889724'>💖</emoji> ╰── ᴘꪮᴡꫀʀꫀᴅ ʙʏ : ˹Yꪮʀᴜ ꪛ Mᴜꜱɪᴄ !! 🌿</blockquote>",
-                        parse_mode=ParseMode.HTML,
-                    )
-                except Exception:
-                    pass
-                return await client.leave_call(chat_id, close=False)
+                await self.show_no_more_songs_card(chat_id, popped)
+                return  # stay connected, idle, waiting for the Autoplay tap
+
         except Exception:
             try:
                 await _clear_(chat_id)

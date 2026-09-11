@@ -97,3 +97,39 @@ async def autoplay_toggle_cb(client, callback_query: CallbackQuery):
         await callback_query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(buttons))
     except Exception:
         pass
+
+
+@app.on_callback_query(filters.regex(r"^autoplay_search_now (-?\d+)$"))
+async def autoplay_search_now_cb(client, callback_query: CallbackQuery):
+    """The 'No More Songs' card's Autoplay button — deletes that card and
+    immediately searches for + plays a fresh song, then leaves autoplay ON
+    so it keeps going from here."""
+    chat_id = int(callback_query.matches[0].group(1))
+    await callback_query.answer("🔎 Searching...")
+
+    try:
+        await callback_query.message.delete()
+    except Exception:
+        pass
+
+    await autoplay_on(chat_id)
+
+    from SIMPLE_MUSIC.core.call import SIMPLE
+    from SIMPLE_MUSIC.utils.database import group_assistant
+
+    seed = SIMPLE._pending_seed.pop(chat_id, None)
+    if not seed or not seed.get("title"):
+        return await client.send_message(
+            chat_id, "🎶 Couldn't find a recent song to continue from — use /play to start again."
+        )
+
+    try:
+        assistant = await group_assistant(SIMPLE, chat_id)
+    except Exception:
+        return await client.send_message(chat_id, "🎶 Couldn't rejoin the videochat — try /play again.")
+
+    started = await SIMPLE._autoplay_next(assistant, chat_id, seed)
+    if not started:
+        await client.send_message(
+            chat_id, "🎶 Couldn't find a fresh song right now — use /play to start something."
+        )
