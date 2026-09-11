@@ -111,7 +111,7 @@ async def skip(cli, message: Message, _, chat_id):
     SIMPLE._autoplay_reserved[chat_id] = False
     if len(check) == 1 and await is_autoplay(chat_id):
         asyncio.create_task(
-            SIMPLE.reserve_next_autoplay(chat_id, check[0]["chat_id"], check[0]["title"], "Autoplay")
+            SIMPLE.reserve_next_autoplay(chat_id, check[0]["chat_id"], check[0]["title"], "Autoplay", check[0].get("vidid"))
         )
     title = (check[0]["title"]).title()
     user = check[0]["by"]

@@ -344,11 +344,59 @@ class Call(PyTgCalls):
     _autoplay_reserved: dict = {}  # chat_id -> True once the next song is already queued ahead of time
     _autoplay_pool: dict = {}      # chat_id -> {"tracks": [...], "index": 0, "limit": 0}
 
+    async def _pick_related_track(self, chat_id: int, seed_vidid: str):
+        """Primary picker: YouTube's own Mix/Radio list for the last played
+        video (real algorithmic 'up next', not a keyword search) — far less
+        prone to looping back over the same handful of songs than searching
+        the current title over and over."""
+        from SIMPLE_MUSIC.platforms.Youtube import get_related_videos, get_exact_video_info
+        import random as _random
+
+        if not seed_vidid or seed_vidid.startswith("ga_"):
+            return None  # no real YouTube ID to seed a Mix from
+
+        history = self._autoplay_history.setdefault(chat_id, [])
+        try:
+            related = await get_related_videos(seed_vidid) or []
+        except Exception:
+            LOGGER(__name__).exception(f"[autoplay] get_related_videos('{seed_vidid}') failed")
+            related = []
+
+        candidates = [r for r in related if r.get("videoId") and r["videoId"] not in history]
+        if not candidates:
+            return None  # don't fall back to repeats — let the caller try the next tier
+
+        pool = candidates[:5]
+        _random.shuffle(pool)
+        for pick in pool:
+            vidid = pick["videoId"]
+            try:
+                info = await get_exact_video_info(vidid)
+            except Exception:
+                info = None
+            title = (info or {}).get("title") or pick.get("title") or "Autoplay"
+            duration = (info or {}).get("durationText") or "00:00"
+            try:
+                file_path, _direct = await YouTube.download(vidid, None, videoid=True, video=None)
+            except Exception:
+                LOGGER(__name__).exception(f"[autoplay] download failed for related '{title}' ({vidid})")
+                continue
+            if not file_path:
+                continue
+            history.append(vidid)
+            history[:] = history[-15:]  # keep last 15 so a full session doesn't repeat too soon
+            return {
+                "title": title,
+                "duration": duration,
+                "stream_url": file_path,
+                "vidid": vidid,
+                "thumbnail": None,
+            }
+        return None
+
     async def _pick_search_track(self, chat_id: int, seed_title: str):
-        """Yukki-style autoplay: plain title search for the currently playing
-        song (own search API, real video_ids — no third-party 'autoplay'
-        dependency), skip anything already played recently, then resolve
-        audio through the exact same download() pipeline normal /play uses."""
+        """Secondary picker: plain title search (own search API, real
+        video_ids), used only when the Mix has nothing fresh left."""
         from SIMPLE_MUSIC.platforms.Youtube import search_youtube_api
         import random as _random
 
@@ -362,9 +410,9 @@ class Call(PyTgCalls):
 
         candidates = [r for r in results if r.get("videoId") and r["videoId"] not in history]
         if not candidates:
-            candidates = [r for r in results if r.get("videoId")]
-        if not candidates:
-            LOGGER(__name__).warning(f"[autoplay] no search candidates for seed '{clean_seed}'")
+            # Every result overlaps recent history — do NOT ignore history
+            # just to force a pick; that's exactly what causes repeats.
+            # Let the caller fall through to the playlist pool instead.
             return None
 
         pool = candidates[:5]
@@ -391,14 +439,18 @@ class Call(PyTgCalls):
             }
         return None
 
-    async def _pick_next_track(self, chat_id: int, seed_title: str):
-        """Yukki-style search (own pipeline, real video_ids) first — if it's
-        empty or every candidate fails, fall back to the endless curated
-        playlist pool so autoplay never simply stops."""
+    async def _pick_next_track(self, chat_id: int, seed_title: str, seed_vidid: str = None):
+        """YouTube Mix (real algorithmic related-videos) first, then a plain
+        title search, then the endless curated playlist pool — each tier only
+        used when the one before it has nothing fresh left, so autoplay never
+        simply stops AND never has to fall back to repeating something."""
+        track = await self._pick_related_track(chat_id, seed_vidid)
+        if track:
+            return track
         track = await self._pick_search_track(chat_id, seed_title)
         if track:
             return track
-        LOGGER(__name__).info(f"[autoplay] search picker had nothing usable, falling back to playlist pool for chat {chat_id}")
+        LOGGER(__name__).info(f"[autoplay] no fresh Mix/search candidates, falling back to playlist pool for chat {chat_id}")
         return await self._pick_pool_track(chat_id)
 
     async def _ensure_autoplay_pool(self, chat_id: int):
@@ -462,7 +514,7 @@ class Call(PyTgCalls):
 
             vidid = track.get("video_id")
             norm_title = " ".join(str(track.get("title") or "").split()).lower()
-            if not vidid or (norm_title and norm_title in history):
+            if not vidid or vidid in history:
                 continue
             resolve_url = track.get("resolve_url")
             if not resolve_url:
@@ -479,9 +531,8 @@ class Call(PyTgCalls):
                         f"[autoplay] resolve mismatch, skipping: wanted '{track.get('title')}' got '{confirmed_title}'"
                     )
                     continue
-                if norm_title:
-                    history.append(norm_title)
-                    history[:] = history[-15:]  # keep last 15 so a full session doesn't repeat too soon
+                history.append(vidid)
+                history[:] = history[-15:]  # keep last 15 so a full session doesn't repeat too soon
                 # Use what the resolve engine actually confirms it fetched —
                 # not the playlist's guess — so the caption never shows a
                 # different song than what's really playing.
@@ -505,7 +556,7 @@ class Call(PyTgCalls):
             "💃 GET READY! YOUR SONG IS COMING UP NEXT.</blockquote>"
         ).format(idx=index, title=title[:60], dur=duration, req=requester)
 
-    async def reserve_next_autoplay(self, chat_id: int, original_chat_id: int, seed_title: str, requester: str = "Autoplay"):
+    async def reserve_next_autoplay(self, chat_id: int, original_chat_id: int, seed_title: str, requester: str = "Autoplay", seed_vidid: str = None):
         """Proactively fetch + queue ONE autoplay song ahead of time while the
         current song is still playing, so there's zero gap between tracks."""
         from SIMPLE_MUSIC.utils.stream.queue import put_queue
@@ -513,7 +564,7 @@ class Call(PyTgCalls):
         if self._autoplay_reserved.get(chat_id):
             return False
         try:
-            track = await self._pick_next_track(chat_id, seed_title)
+            track = await self._pick_next_track(chat_id, seed_title, seed_vidid)
             if not track:
                 return False
             vidid = track["vidid"]
@@ -535,7 +586,8 @@ class Call(PyTgCalls):
             from SIMPLE_MUSIC.utils.stream.queue import put_queue
 
             seed_title = popped.get("title") or ""
-            track = await self._pick_next_track(chat_id, seed_title)
+            seed_vidid = popped.get("vidid")
+            track = await self._pick_next_track(chat_id, seed_title, seed_vidid)
             if not track:
                 return False
             vidid = track["vidid"]
@@ -562,6 +614,7 @@ class Call(PyTgCalls):
             img = track.get("thumbnail") or await gen_thumb(vidid, title=title, duration=track["duration"])
             button = await stream_markup(_, chat_id)
             run = await app.send_photo(
+                has_spoiler=True,
                 chat_id=original_chat_id,
                 photo=img,
                 caption=stream_caption(title, track["duration"], "Autoplay"),
@@ -617,7 +670,7 @@ class Call(PyTgCalls):
         self._autoplay_reserved[chat_id] = False
         if len(check) == 1 and await is_autoplay(chat_id):
             asyncio.create_task(
-                self.reserve_next_autoplay(chat_id, check[0]["chat_id"], check[0]["title"], "Autoplay")
+                self.reserve_next_autoplay(chat_id, check[0]["chat_id"], check[0]["title"], "Autoplay", check[0].get("vidid"))
             )
         language = await get_lang(chat_id)
         _ = get_string(language)
@@ -652,6 +705,7 @@ class Call(PyTgCalls):
             img = await gen_thumb(videoid, title=title, duration=check[0]["dur"])
             button = await stream_markup(_, chat_id)
             run = await app.send_photo(
+                has_spoiler=True,
                 chat_id=original_chat_id,
                 photo=img,
                 caption=stream_caption(title[:23], check[0]["dur"], user),
@@ -684,6 +738,7 @@ class Call(PyTgCalls):
             button = await stream_markup(_, chat_id)
             await mystic.delete()
             run = await app.send_photo(
+                has_spoiler=True,
                 chat_id=original_chat_id,
                 photo=img,
                 caption=stream_caption(title[:23], check[0]["dur"], user),
@@ -703,6 +758,7 @@ class Call(PyTgCalls):
                 )
             button = await stream_markup(_, chat_id)
             run = await app.send_photo(
+                has_spoiler=True,
                 chat_id=original_chat_id,
                 photo=config.STREAM_IMG_URL,
                 caption=_["stream_2"].format(user),
@@ -723,6 +779,7 @@ class Call(PyTgCalls):
                 button = await stream_markup(_, chat_id)
                 queue_image = check[0].get("image")
                 run = await app.send_photo(
+                    has_spoiler=True,
                     chat_id=original_chat_id,
                     photo=(
                         queue_image
@@ -741,6 +798,7 @@ class Call(PyTgCalls):
             elif videoid == "soundcloud":
                 button = await stream_markup(_, chat_id)
                 run = await app.send_photo(
+                    has_spoiler=True,
                     chat_id=original_chat_id,
                     photo=config.SOUNCLOUD_IMG_URL,
                     caption=stream_caption(title[:23], check[0]["dur"], user),
@@ -753,6 +811,7 @@ class Call(PyTgCalls):
                 img = queue_image if queue_image else await gen_thumb(videoid, title=title, duration=check[0]["dur"])
                 button = await stream_markup(_, chat_id)
                 run = await app.send_photo(
+                    has_spoiler=True,
                     chat_id=original_chat_id,
                     photo=img,
                     caption=_["stream_1"].format(

@@ -72,13 +72,19 @@ def track_markup(_, videoid, user_id, channel, fplay):
     return buttons
 
 
-async def _autoplay_label(chat_id) -> str:
+async def _autoplay_button_data(chat_id):
+    """Returns (label_text, icon_emoji_id). Telegram buttons only support ONE
+    custom-emoji icon slot, so the icon itself swaps between the ✔️/❌ premium
+    emoji depending on state — that's the part that actually needs to look
+    'premium', the text stays plain since button labels can't render
+    per-character custom emoji."""
     if await is_autoplay(chat_id):
-        return "🔤 Aᴜᴛᴏᴩʟᴀʏ : ᴏɴ ✔️"
-    return "🔤 Aᴜᴛᴏᴩʟᴀʏ : ᴏꜰꜰ ❌"
+        return "Aᴜᴛᴏᴩʟᴀʏ : ᴏɴ ✔️", "6100331522991072240"
+    return "Aᴜᴛᴏᴩʟᴀʏ : ᴏꜰꜰ ❌", "6242282747629413332"
 
 
 async def stream_markup_timer(_, chat_id, played, dur):
+    autoplay_label, autoplay_icon = await _autoplay_button_data(chat_id)
     played_sec = time_to_seconds(played)
     duration_sec = time_to_seconds(dur)
 
@@ -132,7 +138,12 @@ async def stream_markup_timer(_, chat_id, played, dur):
             InlineKeyboardButton(text="▢", callback_data=f"ADMIN Stop|{chat_id}", **_get_style(r2)),
         ],
         [
-            InlineKeyboardButton(text=await _autoplay_label(chat_id), callback_data=f"autoplay_toggle {chat_id}", **_get_style(r2), **_get_icon("5411316015915102848")),
+            InlineKeyboardButton(
+                text=autoplay_label,
+                callback_data=f"autoplay_toggle {chat_id}",
+                **_get_style(r2),
+                **_get_icon(autoplay_icon),
+            ),
         ],
         [
             InlineKeyboardButton(text="10s", callback_data=f"ADMIN Back10|{chat_id}", **_get_style(r2), **_get_icon("5438266304337296696")),
@@ -147,6 +158,7 @@ async def stream_markup_timer(_, chat_id, played, dur):
 
 async def stream_markup(_, chat_id):
     r1, r2, r3 = random.choices(STYLES, k=3)
+    autoplay_label, autoplay_icon = await _autoplay_button_data(chat_id)
     buttons = [
         [
             InlineKeyboardButton(text="ʟᴏᴀᴅɪɴɢ…", url=_group_add_url(), **_get_style(r1)),
@@ -159,7 +171,12 @@ async def stream_markup(_, chat_id):
             InlineKeyboardButton(text="▢", callback_data=f"ADMIN Stop|{chat_id}", **_get_style(r1)),
         ],
         [
-            InlineKeyboardButton(text=await _autoplay_label(chat_id), callback_data=f"autoplay_toggle {chat_id}", **_get_style(r2), **_get_icon("5411316015915102848")),
+            InlineKeyboardButton(
+                text=autoplay_label,
+                callback_data=f"autoplay_toggle {chat_id}",
+                **_get_style(r2),
+                **_get_icon(autoplay_icon),
+            ),
         ],
         [
             InlineKeyboardButton(text="10s", callback_data=f"ADMIN Back10|{chat_id}", **_get_style(r1), **_get_icon("5438266304337296696")),

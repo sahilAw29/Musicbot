@@ -47,7 +47,7 @@ async def autoplay_command(client, message: Message):
         check = db.get(chat_id)
         if check and len(check) == 1:
             asyncio.create_task(
-                SIMPLE.reserve_next_autoplay(chat_id, check[0]["chat_id"], check[0]["title"], "Autoplay")
+                SIMPLE.reserve_next_autoplay(chat_id, check[0]["chat_id"], check[0]["title"], "Autoplay", check[0].get("vidid"))
             )
 
     elif state == "disable":
@@ -76,7 +76,7 @@ async def autoplay_toggle_cb(client, callback_query: CallbackQuery):
         check = db.get(chat_id)
         if check and len(check) == 1:
             asyncio.create_task(
-                SIMPLE.reserve_next_autoplay(chat_id, check[0]["chat_id"], check[0]["title"], "Autoplay")
+                SIMPLE.reserve_next_autoplay(chat_id, check[0]["chat_id"], check[0]["title"], "Autoplay", check[0].get("vidid"))
             )
 
     try:
