@@ -75,12 +75,12 @@ async def send_heart_effect_private(chat_id: int, retries: int = 3):
 async def send_welcome_animation(message: Message):
     """Small 'Welcome Baby' cycling text animation before the real start message."""
     welcome_msgs = [
-        "<emoji id='5411200584374056500'>🎁</emoji> Wᴇʟᴄᴏᴍᴇ Bᴀʙʏ ꨄ {}.. ⚣",
-        "<emoji id='6327605773362794574'>🩷</emoji> Wᴇʟᴄᴏᴍᴇ Bᴀʙʏ ꨄ {}.. 🥳",
-        "<emoji id='5364040533498932357'>💎</emoji> Wᴇʟᴄᴏᴍᴇ Bᴀʙʏ ꨄ {}.. 💥",
-        "<emoji id='6294226146531744488'>💐</emoji> Wᴇʟᴄᴏᴍᴇ Bᴀʙʏ ꨄ {}.. 🤩",
-        "<emoji id='5363992034728229166'>✨</emoji> Wᴇʟᴄᴏᴍᴇ Bᴀʙʏ ꨄ {}.. 💌",
-        "<emoji id='6293832040332664717'>❤️</emoji> Wᴇʟᴄᴏᴍᴇ Bᴀʙʏ ꨄ {}.. 💞",
+        "<emoji id='5411200584374056500'>🎁</emoji> Wᴇʟᴄᴏᴍᴇ Bᴀʙʏ ꨄ {}.. <emoji id='6217332007001658871'>⚣</emoji>",
+        "<emoji id='6327605773362794574'>🩷</emoji> Wᴇʟᴄᴏᴍᴇ Bᴀʙʏ ꨄ {}.. <emoji id='6215221185194497730'>🥳</emoji>",
+        "<emoji id='5364040533498932357'>💎</emoji> Wᴇʟᴄᴏᴍᴇ Bᴀʙʏ ꨄ {}.. <emoji id='6215176835362198693'>💥</emoji>",
+        "<emoji id='6294226146531744488'>💐</emoji> Wᴇʟᴄᴏᴍᴇ Bᴀʙʏ ꨄ {}.. <emoji id='6219844953711844584'>🤩</emoji>",
+        "<emoji id='5363992034728229166'>✨</emoji> Wᴇʟᴄᴏᴍᴇ Bᴀʙʏ ꨄ {}.. <emoji id='6237602603371337712'>💌</emoji>",
+        "<emoji id='6293832040332664717'>❤️</emoji> Wᴇʟᴄᴏᴍᴇ Bᴀʙʏ ꨄ {}.. <emoji id='6240054458466702947'>💞</emoji>",
     ]
     try:
         lol = await message.reply_text(welcome_msgs[0].format(message.from_user.mention))
@@ -106,6 +106,10 @@ async def send_logs_bg(message, text_type="started"):
 
 @app.on_message(filters.command(["start"]) & filters.private & ~BANNED_USERS)
 async def start_pm(client, message: Message):
+    try:
+        await client.send_reaction(chat_id=message.chat.id, message_id=message.id, emoji="❤️", big=True)
+    except Exception:
+        pass
     asyncio.create_task(add_served_user(message.from_user.id))
     _ = get_string("en")
 
@@ -205,6 +209,10 @@ async def home_cb(client, CallbackQuery, _):
 @app.on_message(filters.command(["start"]) & filters.group & ~BANNED_USERS)
 @LanguageStart
 async def start_gp(client, message: Message, _):
+    try:
+        await client.send_reaction(chat_id=message.chat.id, message_id=message.id, emoji="❤️", big=True)
+    except Exception:
+        pass
     out = start_panel(_)
     uptime = int(time.time() - _boot_)
     await client.send_photo(

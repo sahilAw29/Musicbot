@@ -1,6 +1,6 @@
 # -----------------------------------------------
-# 🔸 AALIYA MUSIC BOT Project
-# 🔹 Developed & Maintained by: Aaliya Music Bot ()
+# 🔸 YORU MUSIC BOT Project
+# 🔹 Developed & Maintained by: Yoru Music Bot ()
 # 📅 Copyright © 2026 – All Rights Reserved
 #
 # 📖 License:
@@ -9,7 +9,7 @@
 # Commercial use, redistribution, or removal of this notice is strictly prohibited
 # without prior written permission from the author.
 #
-# ❤️ Made with dedication and love by Aaliya Music Bot
+# ❤️ Made with dedication and love by Yoru Music Bot
 # -----------------------------------------------
 import math
 import random
@@ -79,8 +79,8 @@ async def _autoplay_button_data(chat_id):
     'premium', the text stays plain since button labels can't render
     per-character custom emoji."""
     if await is_autoplay(chat_id):
-        return "Aᴜᴛᴏᴩʟᴀʏ : ᴏɴ ✔️", "6100331522991072240"
-    return "Aᴜᴛᴏᴩʟᴀʏ : ᴏꜰꜰ ❌", "6242282747629413332"
+        return "Aᴜᴛᴏᴩʟᴀʏ : ᴏɴ", "6219844953711844584"
+    return "Aᴜᴛᴏᴩʟᴀʏ : ᴏꜰꜰ", "6237830550170640402"
 
 
 async def stream_markup_timer(_, chat_id, played, dur):
@@ -146,11 +146,11 @@ async def stream_markup_timer(_, chat_id, played, dur):
             ),
         ],
         [
-            InlineKeyboardButton(text="10s", callback_data=f"ADMIN Back10|{chat_id}", **_get_style(r2), **_get_icon("5438266304337296696")),
-            InlineKeyboardButton(text="10s", callback_data=f"ADMIN Fwd10|{chat_id}", **_get_style(r2), **_get_icon("5435955998479102657")),
+            InlineKeyboardButton(text="10s", callback_data=f"ADMIN Back10|{chat_id}", **_get_style(r2), **_get_icon("5456187398977247949")),
+            InlineKeyboardButton(text="10s", callback_data=f"ADMIN Fwd10|{chat_id}", **_get_style(r2), **_get_icon("5456327792868220208")),
         ],
         [
-            InlineKeyboardButton(text="Close", callback_data=f"STREAM_CLOSE|{chat_id}", **_get_style(r3), **_get_icon("5269763170968297861"))
+            InlineKeyboardButton(text="Close", callback_data=f"STREAM_CLOSE|{chat_id}", **_get_style(r3), **_get_icon("6026256492619895014"))
         ],
     ]
     return buttons
@@ -179,11 +179,11 @@ async def stream_markup(_, chat_id):
             ),
         ],
         [
-            InlineKeyboardButton(text="10s", callback_data=f"ADMIN Back10|{chat_id}", **_get_style(r1), **_get_icon("5438266304337296696")),
-            InlineKeyboardButton(text="10s", callback_data=f"ADMIN Fwd10|{chat_id}", **_get_style(r1), **_get_icon("5435955998479102657")),
+            InlineKeyboardButton(text="10s", callback_data=f"ADMIN Back10|{chat_id}", **_get_style(r1), **_get_icon("5456187398977247949")),
+            InlineKeyboardButton(text="10s", callback_data=f"ADMIN Fwd10|{chat_id}", **_get_style(r1), **_get_icon("5456327792868220208")),
         ],
         [
-            InlineKeyboardButton(text="Close", callback_data=f"STREAM_CLOSE|{chat_id}", **_get_style(r3), **_get_icon("5269763170968297861"))
+            InlineKeyboardButton(text="Close", callback_data=f"STREAM_CLOSE|{chat_id}", **_get_style(r3), **_get_icon("6026256492619895014"))
         ],
     ]
     return buttons

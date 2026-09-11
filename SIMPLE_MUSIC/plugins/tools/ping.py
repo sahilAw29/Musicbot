@@ -1,6 +1,6 @@
 # -----------------------------------------------
-# 🔸 AALIYA MUSIC BOT Project
-# 🔹 Developed & Maintained by: Aaliya Music Bot ()
+# 🔸 YORU MUSIC BOT Project
+# 🔹 Developed & Maintained by: Yoru Music Bot ()
 # 📅 Copyright © 2026 – All Rights Reserved
 #
 # 📖 License:
@@ -9,7 +9,7 @@
 # Commercial use, redistribution, or removal of this notice is strictly prohibited
 # without prior written permission from the author.
 #
-# ❤️ Made with dedication and love by Aaliya Music Bot
+# ❤️ Made with dedication and love by Yoru Music Bot
 # -----------------------------------------------
 import random
 import config
@@ -49,7 +49,7 @@ async def ping_com(client, message: Message, _):
     resp = (datetime.now() - start).microseconds / 1000
     
     # Note: supp_markup is imported. You may need to add the color logic inside 
-    # Aaliya Music Bot.utils.inline.supp_markup to apply it to the ping buttons.
+    # Yoru Music Bot.utils.inline.supp_markup to apply it to the ping buttons.
     await response.edit_text(
         _["ping_2"].format(resp, app.mention, UP, RAM, CPU, DISK, pytgping),
         reply_markup=supp_markup(_),

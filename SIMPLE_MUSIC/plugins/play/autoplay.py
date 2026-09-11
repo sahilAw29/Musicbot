@@ -1,5 +1,5 @@
 # -----------------------------------------------
-# 🔸 AALIYA MUSIC BOT Project
+# 🔸 YORU MUSIC BOT Project
 # 🔹 /autoplay command — auto-continues music when the queue ends
 # -----------------------------------------------
 import asyncio
