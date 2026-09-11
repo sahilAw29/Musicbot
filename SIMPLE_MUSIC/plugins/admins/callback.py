@@ -16,6 +16,7 @@ from pyrogram import filters
 from pyrogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from SIMPLE_MUSIC import YouTube, app
 from SIMPLE_MUSIC.core.call import SIMPLE, _clear_
+from SIMPLE_MUSIC.core.transition import stream_transition
 from SIMPLE_MUSIC.misc import SUDOERS, db
 from SIMPLE_MUSIC.utils.database import (
     get_active_chats,
@@ -108,6 +109,7 @@ async def autoplay_skip_callback(client, callback_query: CallbackQuery):
 
 @app.on_callback_query(filters.regex("ADMIN") & ~BANNED_USERS)
 @languageCB
+@stream_transition
 async def del_back_playlist(client, CallbackQuery, _):
     callback_data = CallbackQuery.data.strip()
     callback_request = callback_data.split(None, 1)[1]

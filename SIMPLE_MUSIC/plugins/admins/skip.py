@@ -18,6 +18,7 @@ import asyncio
 import config
 from SIMPLE_MUSIC import YouTube, app
 from SIMPLE_MUSIC.core.call import SIMPLE, _clear_
+from SIMPLE_MUSIC.core.transition import stream_transition
 from SIMPLE_MUSIC.misc import db
 from SIMPLE_MUSIC.utils.database import get_loop, is_autoplay
 from SIMPLE_MUSIC.utils.decorators import AdminRightsCheck
@@ -31,6 +32,7 @@ from config import BANNED_USERS
     filters.command(["skip", "cskip", "next", "cnext"]) & filters.group & ~BANNED_USERS
 )
 @AdminRightsCheck
+@stream_transition
 async def skip(cli, message: Message, _, chat_id):
     if not len(message.command) < 2:
         loop = await get_loop(chat_id)

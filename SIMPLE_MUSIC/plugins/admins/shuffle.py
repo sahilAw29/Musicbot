@@ -15,6 +15,7 @@ import random
 from pyrogram import filters
 from pyrogram.types import Message
 from SIMPLE_MUSIC import app
+from SIMPLE_MUSIC.core.transition import stream_transition
 from SIMPLE_MUSIC.misc import db
 from SIMPLE_MUSIC.utils.decorators import AdminRightsCheck
 from SIMPLE_MUSIC.utils.inline import close_markup
@@ -25,6 +26,7 @@ from config import BANNED_USERS
     filters.command(["shuffle", "cshuffle"]) & filters.group & ~BANNED_USERS
 )
 @AdminRightsCheck
+@stream_transition
 async def admins(Client, message: Message, _, chat_id):
     check = db.get(chat_id)
     if not check:

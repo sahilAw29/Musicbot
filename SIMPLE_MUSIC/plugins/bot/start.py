@@ -75,7 +75,7 @@ async def send_heart_effect_private(chat_id: int, retries: int = 3):
 async def send_welcome_animation(message: Message):
     """Small 'Welcome Baby' cycling text animation before the real start message."""
     welcome_msgs = [
-        "<emoji id='5411200584374056500'>🎁</emoji> Wᴇʟᴄᴏᴍᴇ Bᴀʙʏ ꨄ {}.. <emoji id='6217332007001658871'>⚣</emoji>",
+        "🩷 Wᴇʟᴄᴏᴍᴇ Bᴀʙʏ ꨄ {} 🥳",
         "<emoji id='6327605773362794574'>🩷</emoji> Wᴇʟᴄᴏᴍᴇ Bᴀʙʏ ꨄ {}.. <emoji id='6215221185194497730'>🥳</emoji>",
         "<emoji id='5364040533498932357'>💎</emoji> Wᴇʟᴄᴏᴍᴇ Bᴀʙʏ ꨄ {}.. <emoji id='6215176835362198693'>💥</emoji>",
         "<emoji id='6294226146531744488'>💐</emoji> Wᴇʟᴄᴏᴍᴇ Bᴀʙʏ ꨄ {}.. <emoji id='6219844953711844584'>🤩</emoji>",
@@ -250,10 +250,11 @@ async def welcome(client, message: Message):
                     return await app.leave_chat(message.chat.id)
 
                 out = start_panel(_)
+                welcome_text = f"🩷 Wᴇʟᴄᴏᴍᴇ Bᴀʙʏ ꨄ {message.from_user.mention} 🥳"
                 await client.send_photo(
                     chat_id=message.chat.id,
                     photo=config.START_IMG_URL,
-                    caption=_["start_3"].format(message.from_user.mention, app.mention, message.chat.title, app.mention),
+                    caption=welcome_text,
                     reply_markup=InlineKeyboardMarkup(out),
                 )
                 asyncio.create_task(add_served_chat(message.chat.id))
