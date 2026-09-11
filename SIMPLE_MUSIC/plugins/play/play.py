@@ -40,6 +40,21 @@ from SIMPLE_MUSIC.utils.logger import play_logs
 from SIMPLE_MUSIC.utils.stream.stream import stream
 from config import BANNED_USERS, lyrical
 
+async def send_loading_sticker(target_message):
+    """Sends the configured 'loading' indicator. Supports either a real
+    sticker file_id or a premium/custom-emoji id (numeric) — Telegram
+    represents these very differently, so we detect which one we have and
+    send it the right way instead of always calling reply_sticker."""
+    sticker_id = getattr(config, "LOADING_STICKER_ID", "CAACAgUAAxkBAAEh4PxqiaBLfDX8oIaBrlN0mHSJ7Td0RAAC0CMAAkEtGVWBmO4GOjbcQj0E")
+    if sticker_id and str(sticker_id).isdigit():
+        from pyrogram.enums import ParseMode
+        return await target_message.reply(
+            f"<emoji id='{sticker_id}'>🔹</emoji>",
+            parse_mode=ParseMode.HTML,
+        )
+    return await target_message.reply_sticker(sticker_id)
+
+
 # 💥 YAHAN HUMNE EK MAGIC WRAPPER BANAYA HAI JO CRASH HONE SE BACHAYEGA 💥
 class StickerWrapper:
     def __init__(self, orig_msg, sticker_msg):
@@ -98,7 +113,7 @@ async def play_commnd(
     fplay,
 ):
     # 👇 SIRF STICKER AAYEGA, KOI TEXT NAHI AAYEGA 👇
-    sticker_msg = await message.reply_sticker(getattr(config, "LOADING_STICKER_ID", "CAACAgUAAxkBAAEh4PxqiaBLfDX8oIaBrlN0mHSJ7Td0RAAC0CMAAkEtGVWBmO4GOjbcQj0E"))
+    sticker_msg = await send_loading_sticker(message)
     mystic = StickerWrapper(message, sticker_msg)
     
     plist_id = None
@@ -426,7 +441,7 @@ async def play_music(client, CallbackQuery, _):
     except: pass
     
     # 👇 INLINE BUTTON WALI JAGAH BHI SIRF STICKER 👇
-    sticker_msg = await CallbackQuery.message.reply_sticker(getattr(config, "LOADING_STICKER_ID", "CAACAgUAAxkBAAEh4PxqiaBLfDX8oIaBrlN0mHSJ7Td0RAAC0CMAAkEtGVWBmO4GOjbcQj0E"))
+    sticker_msg = await send_loading_sticker(CallbackQuery.message)
     mystic = StickerWrapper(CallbackQuery.message, sticker_msg)
     
     try: details, track_id = await YouTube.track(vidid, True)
@@ -461,7 +476,7 @@ async def play_playlists_command(client, CallbackQuery, _):
     except: pass
     
     # 👇 PLAYLIST WALI JAGAH BHI SIRF STICKER 👇
-    sticker_msg = await CallbackQuery.message.reply_sticker(getattr(config, "LOADING_STICKER_ID", "CAACAgUAAxkBAAEh4PxqiaBLfDX8oIaBrlN0mHSJ7Td0RAAC0CMAAkEtGVWBmO4GOjbcQj0E"))
+    sticker_msg = await send_loading_sticker(CallbackQuery.message)
     mystic = StickerWrapper(CallbackQuery.message, sticker_msg)
     
     videoid, spotify = lyrical.get(videoid), True

@@ -25,6 +25,7 @@ from SIMPLE_MUSIC.utils.database import (
     set_welcome_enabled,
     set_welcome_message,
 )
+from SIMPLE_MUSIC.utils.dynamic_settings import get_media
 
 LOGGER = getLogger(__name__)
 
@@ -250,12 +251,21 @@ async def greet_new_member(_, member: ChatMemberUpdated):
 ├── <emoji id='5409350832153979723'>🎁</emoji> ⇛ <b>єηᴊσʏ ᴛʜє ϻυsɪᴄ ᴧηᴅ ᴠɪʙє !</b>
 │
 🌸 ╰── <b>ᴘ σ ᴡ є ʀ є ᴅ  ʙ ʏ  ʏ σ ʀ υ</b></blockquote>"""
-        await app.send_video(
-            chat_id,
-            video=getattr(config, "WELCOME_VIDEO_URL", WELCOME_VIDEO_URL_DEFAULT),
-            caption=caption_text,
-            has_spoiler=True,
-            reply_markup=_welcome_markup(),
-        )
+        video_url = get_media("WELCOME_VIDEO_URL") or getattr(config, "WELCOME_VIDEO_URL", WELCOME_VIDEO_URL_DEFAULT)
+        try:
+            await app.send_video(
+                chat_id,
+                video=video_url,
+                caption=caption_text,
+                has_spoiler=True,
+                reply_markup=_welcome_markup(),
+            )
+        except Exception as e:
+            LOGGER.error("Welcome video send failed, falling back to text: %s", e)
+            await app.send_message(
+                chat_id,
+                caption_text,
+                reply_markup=_welcome_markup(),
+            )
     except Exception as e:
         LOGGER.error("Welcome send failed: %s", e)

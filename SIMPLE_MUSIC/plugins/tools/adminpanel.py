@@ -138,7 +138,20 @@ async def adm_media_view_cb(_, query: CallbackQuery):
                 await app.send_message(query.message.chat.id, text, reply_markup=_media_detail_markup(i))
                 sent = True
             except Exception:
-                sent = False
+                # Stored value wasn't a sticker file_id — it's a custom-emoji
+                # id (typed inline, not a real sticker). Render it as a
+                # premium emoji inside a text message instead.
+                try:
+                    from pyrogram.enums import ParseMode
+                    await app.send_message(
+                        query.message.chat.id,
+                        f"<emoji id='{current}'>🔹</emoji> ↑ ᴄᴜʀʀᴇɴᴛ ᴇᴍᴏᴊɪ\n\n{text}",
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=_media_detail_markup(i),
+                    )
+                    sent = True
+                except Exception:
+                    sent = False
         else:
             for send_fn in (app.send_photo, app.send_video, app.send_animation):
                 try:
@@ -187,8 +200,17 @@ async def adm_capture_media(_, message: Message):
             value = message.video.file_id
         elif message.animation:
             value = message.animation.file_id
-    elif mtype == "sticker" and message.sticker:
-        value = message.sticker.file_id
+    elif mtype == "sticker":
+        if message.sticker:
+            value = message.sticker.file_id
+        elif message.text:
+            # Custom/premium emoji typed inline (not a sticker-pack sticker)
+            # arrives as a text message with a custom_emoji entity — pull its
+            # unique custom-emoji document id out of that entity instead.
+            for ent in (message.entities or []):
+                if getattr(ent, "custom_emoji_id", None):
+                    value = str(ent.custom_emoji_id)
+                    break
     elif message.text and message.text.strip().startswith("http"):
         value = message.text.strip()
 

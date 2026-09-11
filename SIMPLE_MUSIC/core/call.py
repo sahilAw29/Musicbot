@@ -370,8 +370,16 @@ class Call(PyTgCalls):
 
     _autoplay_history: dict = {}
     _autoplay_reserved: dict = {}  # chat_id -> True once the next song is already queued ahead of time
+    _autoplay_locks: dict = {}     # chat_id -> asyncio.Lock, prevents reserve_next_autoplay and _autoplay_next racing each other
     _pending_seed: dict = {}       # chat_id -> {"title","vidid","chat_id","user_id"} of the last song, kept for the "No More Songs" card's Autoplay button
     _autoplay_pool: dict = {}      # chat_id -> {"tracks": [...], "index": 0, "limit": 0}
+
+    def _get_autoplay_lock(self, chat_id: int) -> asyncio.Lock:
+        lock = self._autoplay_locks.get(chat_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._autoplay_locks[chat_id] = lock
+        return lock
 
     async def _pick_related_track(self, chat_id: int, seed_vidid: str):
         """Primary picker: YouTube's own Mix/Radio list for the last played
@@ -592,69 +600,80 @@ class Call(PyTgCalls):
 
         if self._autoplay_reserved.get(chat_id):
             return False
-        try:
-            track = await self._pick_next_track(chat_id, seed_title, seed_vidid)
-            if not track:
-                return False
-            vidid = track["vidid"]
-            await put_queue(
-                chat_id, original_chat_id, track["stream_url"],
-                track["title"], track["duration"], "Autoplay", vidid, 0, "audio",
-                image=track.get("thumbnail"),
-            )
-            self._autoplay_reserved[chat_id] = True
-            return True
-        except Exception:
-            LOGGER(__name__).exception(f"[autoplay] reserve_next_autoplay failed for chat {chat_id}")
+        lock = self._get_autoplay_lock(chat_id)
+        if lock.locked():
             return False
+        async with lock:
+            # Re-check after acquiring the lock — a manual /skip may have
+            # already emptied the queue and triggered _autoplay_next while
+            # we were waiting, which invalidates this reservation attempt.
+            if self._autoplay_reserved.get(chat_id):
+                return False
+            try:
+                track = await self._pick_next_track(chat_id, seed_title, seed_vidid)
+                if not track:
+                    return False
+                vidid = track["vidid"]
+                await put_queue(
+                    chat_id, original_chat_id, track["stream_url"],
+                    track["title"], track["duration"], "Autoplay", vidid, 0, "audio",
+                    image=track.get("thumbnail"),
+                )
+                self._autoplay_reserved[chat_id] = True
+                return True
+            except Exception:
+                LOGGER(__name__).exception(f"[autoplay] reserve_next_autoplay failed for chat {chat_id}")
+                return False
 
     async def _autoplay_next(self, client: PyTgCalls, chat_id: int, popped: dict) -> bool:
         """Fires only if a song wasn't already reserved ahead of time (fallback
         path) — picks + plays the next autoplay track immediately."""
-        try:
-            from SIMPLE_MUSIC.utils.stream.queue import put_queue
-
-            seed_title = popped.get("title") or ""
-            seed_vidid = popped.get("vidid")
-            track = await self._pick_next_track(chat_id, seed_title, seed_vidid)
-            if not track:
-                return False
-            vidid = track["vidid"]
-
-            stream_obj = self._build_stream(track["stream_url"], video=False)
+        lock = self._get_autoplay_lock(chat_id)
+        async with lock:
             try:
-                await self._play_on_assistant(client, chat_id, stream_obj)
+                from SIMPLE_MUSIC.utils.stream.queue import put_queue
+
+                seed_title = popped.get("title") or ""
+                seed_vidid = popped.get("vidid")
+                track = await self._pick_next_track(chat_id, seed_title, seed_vidid)
+                if not track:
+                    return False
+                vidid = track["vidid"]
+
+                stream_obj = self._build_stream(track["stream_url"], video=False)
+                try:
+                    await self._play_on_assistant(client, chat_id, stream_obj)
+                except Exception:
+                    LOGGER(__name__).exception(f"[autoplay] _play_on_assistant failed for chat {chat_id}")
+                    return False
+
+                original_chat_id = popped.get("chat_id")
+                await put_queue(
+                    chat_id, original_chat_id, track["stream_url"],
+                    track["title"], track["duration"], "Autoplay", vidid, popped.get("user_id") or 0, "audio",
+                    image=track.get("thumbnail"),
+                )
+                db[chat_id][0]["played"] = 0
+                self._autoplay_reserved[chat_id] = False
+
+                language = await get_lang(chat_id)
+                _ = get_string(language)
+                title = track["title"].title()[:23]
+                img = track.get("thumbnail") or await gen_thumb(vidid, title=title, duration=track["duration"])
+                button = await stream_markup(_, chat_id)
+                run = await app.send_photo(
+                    has_spoiler=True,
+                    chat_id=original_chat_id,
+                    photo=img,
+                    caption=stream_caption(title, track["duration"], "Autoplay"),
+                    reply_markup=InlineKeyboardMarkup(button),
+                )
+                db[chat_id][0]["mystic"] = run
+                db[chat_id][0]["markup"] = "tg"
+                return True
             except Exception:
-                LOGGER(__name__).exception(f"[autoplay] _play_on_assistant failed for chat {chat_id}")
+                LOGGER(__name__).exception(f"[autoplay] _autoplay_next failed for chat {chat_id}")
                 return False
-
-            original_chat_id = popped.get("chat_id")
-            await put_queue(
-                chat_id, original_chat_id, track["stream_url"],
-                track["title"], track["duration"], "Autoplay", vidid, popped.get("user_id") or 0, "audio",
-                image=track.get("thumbnail"),
-            )
-            db[chat_id][0]["played"] = 0
-            self._autoplay_reserved[chat_id] = False
-
-            language = await get_lang(chat_id)
-            _ = get_string(language)
-            title = track["title"].title()[:23]
-            img = track.get("thumbnail") or await gen_thumb(vidid, title=title, duration=track["duration"])
-            button = await stream_markup(_, chat_id)
-            run = await app.send_photo(
-                has_spoiler=True,
-                chat_id=original_chat_id,
-                photo=img,
-                caption=stream_caption(title, track["duration"], "Autoplay"),
-                reply_markup=InlineKeyboardMarkup(button),
-            )
-            db[chat_id][0]["mystic"] = run
-            db[chat_id][0]["markup"] = "tg"
-            return True
-        except Exception:
-            LOGGER(__name__).exception(f"[autoplay] _autoplay_next failed for chat {chat_id}")
-            return False
 
     async def change_stream(self, client: PyTgCalls, chat_id: int):
         check = db.get(chat_id)
