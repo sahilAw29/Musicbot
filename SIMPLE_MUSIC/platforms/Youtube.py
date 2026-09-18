@@ -143,17 +143,14 @@ async def _download_stream(url, path, headers=None):
 
 
 # ── RAJ ENGINE ─────────────────────────────────────────────────────
-# FIX: poori YouTube URL bhejo Annie ko — ID nahi
-# ID bhejne se Annie us ID ko search query maanti thi → galat song
 async def engine_raj(link: str, is_video: bool, path: str) -> str:
     if not ANNIE_API_KEY:
         return None
     media_type = "video" if is_video else "audio"
-    # Poori URL bhejo — Annie URL se exact video identify karti hai
     params = {"url": link, "type": media_type, "api_key": ANNIE_API_KEY}
     timeout = aiohttp.ClientTimeout(total=300 if is_video else 180)
     try:
-        print(f"🔄 Raj (Annie): {'video' if is_video else 'audio'}...")
+        print(f"🔄 Raj: {'video' if is_video else 'audio'}...")
         session = await get_session()
         async with session.get(
             f"{ANNIE_API_URL.rstrip('/')}/download",
@@ -325,13 +322,15 @@ async def gameover_playlist(playlist_url: str, limit: int):
     return []
 
 
+# ── FIX: video ID se prefetch, title se nahi ──────────────────────
 async def _prefetch_gameover(vidid: str, title: str):
     try:
         persisted = await get_persisted_gameover(vidid)
         if persisted and persisted.get("stream_url"):
             GAMEOVER_CACHE[vidid] = (time.monotonic(), persisted)
             return
-        resolved = await resolve_gameover(_clean_query_for_gameover(title))
+        yt_url = f"https://www.youtube.com/watch?v={vidid}"
+        resolved = await resolve_gameover(yt_url)
         if resolved and resolved.get("stream_url"):
             GAMEOVER_CACHE[vidid] = (time.monotonic(), resolved)
             await save_persisted_gameover(vidid, resolved)
@@ -475,7 +474,6 @@ async def engine_shuvo(link: str, is_video: bool, path: str) -> str:
     return None
 
 
-# ── CORE DOWNLOAD — Raj first (full URL), then Yoru chain ─────────
 async def _core_download(link: str, is_video: bool) -> str:
     vid_id = (
         link.split("v=")[-1].split("&")[0]
@@ -488,7 +486,7 @@ async def _core_download(link: str, is_video: bool) -> str:
     if os.path.exists(final_path) and os.path.getsize(final_path) > 1024:
         return final_path
 
-    # 1st: Raj — full URL bhejo, ID nahi
+    # 1st: Raj
     raj_result = await engine_raj(link, is_video, f"{final_path}_raj")
     if raj_result and os.path.exists(raj_result):
         try:
@@ -506,7 +504,7 @@ async def _core_download(link: str, is_video: bool) -> str:
         except OSError:
             return vda_path
 
-    # 3rd: race engines
+    # 3rd: race
     tasks = [
         asyncio.create_task(engine_shuvo(link, is_video, f"{final_path}_shuvo")),
         asyncio.create_task(engine_shrutibots(vid_id, is_video, f"{final_path}_shruti")),
@@ -531,7 +529,7 @@ async def _core_download(link: str, is_video: bool) -> str:
         except OSError:
             return winner
 
-    # 4th: yt-dlp fallback
+    # 4th: yt-dlp
     loop = asyncio.get_running_loop()
 
     def fallback_ytdl():
@@ -662,7 +660,6 @@ async def get_related_videos(video_id: str, limit: int = 10):
     return entries
 
 
-# ── YouTubeAPI CLASS ───────────────────────────────────────────────
 class YouTubeAPI:
     def __init__(self):
         self.base = "https://www.youtube.com/watch?v="
@@ -702,7 +699,10 @@ class YouTubeAPI:
                     vid = exact.get("videoId") or direct_id
                     dur_sec = int(exact.get("durationSeconds") or 0)
                     dur_min = exact.get("durationText") or "00:00"
-                    thumbnail = exact.get("thumbnail") or f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"
+                    thumbnail = (
+                        exact.get("thumbnail")
+                        or f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"
+                    )
                     return exact.get("title", "Unknown"), dur_min, dur_sec, thumbnail, vid
             except Exception:
                 pass
@@ -841,7 +841,12 @@ class YouTubeAPI:
             raise ValueError("No YouTube results found")
         res = results[query_type]
         thumb = _result_thumbnail(res, res["videoId"])
-        return res.get("title", "Unknown"), res.get("durationText") or "00:00", thumb, res["videoId"]
+        return (
+            res.get("title", "Unknown"),
+            res.get("durationText") or "00:00",
+            thumb,
+            res["videoId"],
+        )
 
     async def download(
         self,
@@ -864,7 +869,7 @@ class YouTubeAPI:
             else link.split("/")[-1].split("?")[0]
         )
 
-        # GameOver cache check (audio only)
+        # GameOver cache check
         if not is_video:
             cached = GAMEOVER_CACHE.get(vid_id)
             if cached and time.monotonic() - cached[0] < CACHE_TTL_SECONDS:
@@ -884,9 +889,7 @@ class YouTubeAPI:
         except Exception:
             is_live = True
 
-        # ── RAJ FIRST — audio aur video dono ke liye ──────────────
-        # GameOver se pehle try karo — Raj file download karta hai
-        # (direct=True) jo zyada stable hai long-term ke liye
+        # ── RAJ FIRST ─────────────────────────────────────────────
         raj_path = os.path.join(
             DOWNLOAD_DIR,
             f"{vid_id}_raj.{'mp4' if is_video else 'mp3'}"
@@ -903,14 +906,13 @@ class YouTubeAPI:
             except OSError:
                 return raj_result, True
 
-        # GameOver direct resolve (audio only) — Raj ke baad fallback
+        # ── GAMEOVER — video ID se resolve, title se nahi ─────────
         if not is_video:
             try:
-                is_direct_url = bool(re.search(self.regex, link))
-                resolved = await resolve_gameover(link) if is_direct_url else None
+                yt_url = f"https://www.youtube.com/watch?v={vid_id}"
+                resolved = await resolve_gameover(yt_url)
                 if not resolved or not resolved.get("stream_url"):
-                    query = _clean_query_for_gameover(title_text) or vid_id
-                    resolved = await resolve_gameover(query)
+                    resolved = await resolve_gameover(link)
                 if resolved and resolved.get("stream_url"):
                     GAMEOVER_CACHE[vid_id] = (time.monotonic(), resolved)
                     await save_persisted_gameover(vid_id, resolved)
@@ -918,7 +920,7 @@ class YouTubeAPI:
             except Exception:
                 pass
 
-        # 1 hour+ / live stream path
+        # 1 hour+ / live
         if is_live or duration_sec == 0 or duration_sec > 3600:
             try:
                 session = await get_session()
@@ -969,7 +971,7 @@ class YouTubeAPI:
             except Exception:
                 pass
 
-        # Regular download — VDA + Yoru chain fallback
+        # Regular fallback chain
         try:
             res = await _core_download(link, is_video)
             return (res, True) if res else (None, False)
