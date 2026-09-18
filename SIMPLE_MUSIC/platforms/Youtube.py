@@ -30,12 +30,11 @@ from SIMPLE_MUSIC.utils.formatters import time_to_seconds
 from SIMPLE_MUSIC.core.mongo import mongodb
 
 gameoverdb = mongodb.gameover_cache
-GAMEOVER_PERSIST_TTL_SECONDS = 6 * 60 * 60  # 6 hours; re-resolved automatically after this
+GAMEOVER_PERSIST_TTL_SECONDS = 6 * 60 * 60
 VIDEO_ID_RE = re.compile(r"(?:v=|vi=|youtu\.be/|shorts/|embed/)([A-Za-z0-9_-]{11})")
 
 
 def _extract_video_id(link: str):
-    """Pull the 11-char video ID out of any YouTube URL shape (watch?v=, youtu.be/, shorts/, ?si= etc.)."""
     match = VIDEO_ID_RE.search(link)
     return match.group(1) if match else None
 
@@ -74,6 +73,10 @@ DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 CLIENT_SESSION = None
 
+# ── RAJ (Annie) API CONFIG ─────────────────────────────────────────
+ANNIE_API_URL = os.getenv("ANNIE_API_URL", "https://api.alonexraj.shop")
+ANNIE_API_KEY = os.getenv("ANNIE_API_KEY", "ANNIE-526cd7a349c0c8f1582bc17a")
+
 VDA_KEYS_CACHE = None
 SEARCH_CACHE = {}
 DETAILS_CACHE = {}
@@ -84,8 +87,18 @@ GAMEOVER_CACHE = {}
 CACHE_TTL_SECONDS = 120
 
 
+# ── SESSION ────────────────────────────────────────────────────────
+async def get_session():
+    global CLIENT_SESSION
+    if CLIENT_SESSION is None or CLIENT_SESSION.closed:
+        CLIENT_SESSION = aiohttp.ClientSession(
+            connector=aiohttp.TCPConnector(limit=0)
+        )
+    return CLIENT_SESSION
+
+
+# ── VDA KEYS ───────────────────────────────────────────────────────
 async def _get_vda_keys():
-    """Load remote JSON keys once, with an environment key as fallback."""
     global VDA_KEYS_CACHE
     if VDA_KEYS_CACHE is not None:
         return VDA_KEYS_CACHE
@@ -94,21 +107,89 @@ async def _get_vda_keys():
         keys.append(VDA_API_KEY)
     try:
         session = await get_session()
-        async with session.get(VDA_KEYS_URL, timeout=aiohttp.ClientTimeout(total=8, sock_connect=4, sock_read=6)) as response:
+        async with session.get(
+            VDA_KEYS_URL,
+            timeout=aiohttp.ClientTimeout(total=8, sock_connect=4, sock_read=6),
+        ) as response:
             if response.status == 200:
                 payload = await response.json(content_type=None)
                 if isinstance(payload, dict):
-                    keys.extend(str(value).strip() for value in payload.values() if str(value).strip())
+                    keys.extend(
+                        str(v).strip() for v in payload.values() if str(v).strip()
+                    )
                 elif isinstance(payload, list):
-                    keys.extend(str(value).strip() for value in payload if str(value).strip())
+                    keys.extend(
+                        str(v).strip() for v in payload if str(v).strip()
+                    )
     except Exception:
         pass
     VDA_KEYS_CACHE = list(dict.fromkeys(keys))
     return VDA_KEYS_CACHE
 
 
+# ── STREAM HELPER ──────────────────────────────────────────────────
+async def _download_stream(url, path, headers=None):
+    try:
+        session = await get_session()
+        timeout = aiohttp.ClientTimeout(total=None, sock_connect=5, sock_read=12)
+        async with session.get(url, headers=headers, timeout=timeout) as response:
+            if response.status == 200:
+                async with aiofiles.open(path, mode="wb") as f:
+                    async for chunk in response.content.iter_chunked(4 * 1024 * 1024):
+                        await f.write(chunk)
+                if os.path.exists(path) and os.path.getsize(path) > 1024:
+                    return path
+    except Exception:
+        pass
+    if os.path.exists(path):
+        try:
+            os.remove(path)
+        except Exception:
+            pass
+    return None
+
+
+# ── ENGINE 1: RAJ (Annie API) — PRIMARY ───────────────────────────
+async def engine_raj(link: str, is_video: bool, path: str) -> str:
+    """Raj (Annie) API — first engine tried before anything else."""
+    if not ANNIE_API_KEY:
+        return None
+    media_type = "video" if is_video else "audio"
+    # Annie works better with video ID than full URL
+    vid_match = VIDEO_ID_RE.search(link)
+    value = vid_match.group(1) if vid_match else link
+    params = {"url": value, "type": media_type, "api_key": ANNIE_API_KEY}
+    timeout = aiohttp.ClientTimeout(total=300 if is_video else 180)
+    try:
+        print(f"🔄 Engine: Raj (Annie) — {'video' if is_video else 'audio'}...")
+        session = await get_session()
+        async with session.get(
+            f"{ANNIE_API_URL.rstrip('/')}/download",
+            params=params,
+            timeout=timeout,
+            allow_redirects=True,
+        ) as resp:
+            if resp.status != 200:
+                print(f"⚠️ Raj HTTP {resp.status}")
+                return None
+            async with aiofiles.open(path, mode="wb") as f:
+                async for chunk in resp.content.iter_chunked(256 * 1024):
+                    await f.write(chunk)
+            if os.path.exists(path) and os.path.getsize(path) > 10240:
+                sz = os.path.getsize(path) / 1024 / 1024
+                print(f"✅ Raj success: {sz:.2f} MB")
+                return path
+            try:
+                os.remove(path)
+            except Exception:
+                pass
+    except Exception as e:
+        print(f"❌ Raj error: {e}")
+    return None
+
+
+# ── ENGINE 2: VDA ─────────────────────────────────────────────────
 async def engine_vda(link: str, is_video: bool, path: str) -> str:
-    """Try each VDA key in order, polling the first accepted job to completion."""
     keys = await _get_vda_keys()
     if not keys:
         return None
@@ -149,7 +230,9 @@ async def engine_vda(link: str, is_video: bool, path: str) -> str:
                             continue
                         status = await progress_response.json(content_type=None)
                     download_url = status.get("download_url") or status.get("url")
-                    if download_url or str(status.get("progress")).lower() in ("error", "failed"):
+                    if download_url or str(status.get("progress")).lower() in (
+                        "error", "failed"
+                    ):
                         break
             if download_url:
                 result = await _download_stream(download_url, path)
@@ -160,15 +243,16 @@ async def engine_vda(link: str, is_video: bool, path: str) -> str:
     return None
 
 
+# ── GAMEOVER HELPERS ───────────────────────────────────────────────
 _TITLE_NOISE_RE = re.compile(
-    r"\(.*?\)|\[.*?\]|\{.*?\}|official\s*(video|audio|music\s*video)?|lyrics?\s*(video)?|"
-    r"full\s*(video|song|audio)|hd|4k|new\s*song|latest\s*song|video\s*song",
+    r"\(.*?\)|\[.*?\]|\{.*?\}|official\s*(video|audio|music\s*video)?|"
+    r"lyrics?\s*(video)?|full\s*(video|song|audio)|hd|4k|new\s*song|"
+    r"latest\s*song|video\s*song",
     re.IGNORECASE,
 )
 
 
 def _clean_query_for_gameover(title: str) -> str:
-    """Strip common noise (Official Video, [Lyrics], HD, etc.) so the search API gets a cleaner query."""
     if not title:
         return title
     cleaned = _TITLE_NOISE_RE.sub("", title)
@@ -177,7 +261,6 @@ def _clean_query_for_gameover(title: str) -> str:
 
 
 async def resolve_gameover(query: str):
-    """Cookie-less direct resolve: search text in, direct stream_url out. No file download needed."""
     if not query:
         return None
     try:
@@ -190,7 +273,11 @@ async def resolve_gameover(query: str):
             if response.status != 200:
                 return None
             data = await response.json(content_type=None)
-        if isinstance(data, dict) and data.get("status") == "success" and data.get("stream_url"):
+        if (
+            isinstance(data, dict)
+            and data.get("status") == "success"
+            and data.get("stream_url")
+        ):
             return data
     except Exception:
         pass
@@ -198,8 +285,6 @@ async def resolve_gameover(query: str):
 
 
 async def resolve_gameover_by_url(resolve_url: str):
-    """Same as resolve_gameover but hits an already fully-built resolve URL
-    (as returned inside GameOver autoplay's track list — resolve_url_title)."""
     if not resolve_url:
         return None
     try:
@@ -211,7 +296,11 @@ async def resolve_gameover_by_url(resolve_url: str):
             if response.status != 200:
                 return None
             data = await response.json(content_type=None)
-        if isinstance(data, dict) and data.get("status") == "success" and data.get("stream_url"):
+        if (
+            isinstance(data, dict)
+            and data.get("status") == "success"
+            and data.get("stream_url")
+        ):
             return data
     except Exception:
         pass
@@ -219,9 +308,6 @@ async def resolve_gameover_by_url(resolve_url: str):
 
 
 async def gameover_autoplay(song_query: str):
-    """GameOver's own Autoplay Vibe Engine — given the currently playing song's
-    title, returns a curated 'up next' list (title/artist/duration/thumbnail +
-    a ready resolve_url_title for each), used to drive /autoplay end-to-end."""
     if not song_query:
         return []
     try:
@@ -242,16 +328,15 @@ async def gameover_autoplay(song_query: str):
 
 
 async def gameover_playlist(playlist_url: str, limit: int):
-    """Pulls a batch of tracks (real video_id + resolve_url each) straight
-    from a curated YouTube playlist via GameOver's Ultra Engine. Used as the
-    endless supply for /autoplay — raising `limit` just returns more tracks
-    from the same underlying playlist, so this can never 'run dry': call it
-    again with a bigger limit whenever the pool is running low."""
     try:
         session = await get_session()
         async with session.get(
             GAMEOVER_PLAYLIST_URL,
-            params={"key": GAMEOVER_API_KEY, "url": playlist_url, "limit": str(limit)},
+            params={
+                "key": GAMEOVER_API_KEY,
+                "url": playlist_url,
+                "limit": str(limit),
+            },
             timeout=aiohttp.ClientTimeout(total=15, sock_connect=4, sock_read=10),
         ) as response:
             if response.status != 200:
@@ -265,7 +350,6 @@ async def gameover_playlist(playlist_url: str, limit: int):
 
 
 async def _prefetch_gameover(vidid: str, title: str):
-    """Fired in the background right after search, so download() finds it already cached = instant play."""
     try:
         persisted = await get_persisted_gameover(vidid)
         if persisted and persisted.get("stream_url"):
@@ -279,8 +363,8 @@ async def _prefetch_gameover(vidid: str, title: str):
         pass
 
 
+# ── SEARCH ────────────────────────────────────────────────────────
 async def search_youtube_api(query: str):
-    """Search YouTube through the public JSON API, with a short in-process cache."""
     cache_key = " ".join(str(query).split()).lower()
     now = time.monotonic()
     cached = SEARCH_CACHE.get(cache_key)
@@ -296,21 +380,16 @@ async def search_youtube_api(query: str):
             if response.status != 200:
                 return []
             payload = await response.json(content_type=None)
-        results = payload.get("results", []) if isinstance(payload, dict) else []
+        results = (
+            payload.get("results", []) if isinstance(payload, dict) else []
+        )
         SEARCH_CACHE[cache_key] = (now, results)
         return results
     except Exception:
         return []
 
 
-async def get_session():
-    global CLIENT_SESSION
-    if CLIENT_SESSION is None or CLIENT_SESSION.closed:
-        CLIENT_SESSION = aiohttp.ClientSession(connector=aiohttp.TCPConnector(limit=0))
-    return CLIENT_SESSION
-
 def _result_thumbnail(result, video_id):
-    """Return the thumbnail belonging to the same API result/video ID."""
     raw = result.get("thumbnail")
     if isinstance(raw, dict):
         for key in ("maxres", "high", "medium", "default"):
@@ -330,62 +409,67 @@ def _result_thumbnail(result, video_id):
     return f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
 
 
-async def _download_stream(url, path, headers=None):
-    try:
-        session = await get_session()
-        # Total download time unlimited; a short stalled-read timeout enables quick retry.
-        timeout = aiohttp.ClientTimeout(total=None, sock_connect=5, sock_read=12)
-        
-        async with session.get(url, headers=headers, timeout=timeout) as response:
-            if response.status == 200:
-                async with aiofiles.open(path, mode='wb') as f:
-                    # 4MB chunks improve throughput while keeping memory bounded.
-                    async for chunk in response.content.iter_chunked(4 * 1024 * 1024):
-                        await f.write(chunk)
-                if os.path.exists(path) and os.path.getsize(path) > 1024:
-                    return path
-    except:
-        pass
-    if os.path.exists(path):
-        try: os.remove(path)
-        except: pass
-    return None
-
+# ── REMAINING FALLBACK ENGINES (unchanged from Yoru) ──────────────
 async def engine_shrutibots(vid_id: str, is_video: bool, path: str) -> str:
     try:
         session = await get_session()
         v_type = "video" if is_video else "audio"
-        async with session.get(f"{API_URL}/download", params={"url": vid_id, "type": v_type}, timeout=5) as resp:
-            if resp.status != 200: return None
+        async with session.get(
+            f"{API_URL}/download",
+            params={"url": vid_id, "type": v_type},
+            timeout=aiohttp.ClientTimeout(total=5),
+        ) as resp:
+            if resp.status != 200:
+                return None
             token = (await resp.json()).get("download_token")
-            if not token: return None
-        return await _download_stream(f"{API_URL}/stream/{vid_id}?type={v_type}&token={token}", path)
-    except: return None
+            if not token:
+                return None
+        return await _download_stream(
+            f"{API_URL}/stream/{vid_id}?type={v_type}&token={token}", path
+        )
+    except Exception:
+        return None
+
 
 async def engine_xbit(vid_id: str, is_video: bool, path: str) -> str:
-    if not YTPROXY_URL or not YT_API_KEY: return None
+    if not YTPROXY_URL or not YT_API_KEY:
+        return None
     try:
         session = await get_session()
         headers = {"x-api-key": YT_API_KEY}
-        async with session.get(f"{YTPROXY_URL}/info/{vid_id}", headers=headers, timeout=5) as resp:
-            if resp.status != 200: return None
+        async with session.get(
+            f"{YTPROXY_URL}/info/{vid_id}",
+            headers=headers,
+            timeout=aiohttp.ClientTimeout(total=5),
+        ) as resp:
+            if resp.status != 200:
+                return None
             data = await resp.json()
-        if data.get('status') == 'success':
-            url = data['video_url'] if is_video else data['audio_url']
+        if data.get("status") == "success":
+            url = data["video_url"] if is_video else data["audio_url"]
             return await _download_stream(url, path, headers)
-    except: return None
+    except Exception:
+        return None
+
 
 async def engine_nexgen(vid_id: str, is_video: bool, path: str) -> str:
-    if not API_KEY: return None
+    if not API_KEY:
+        return None
     try:
-        url = f"{VIDEO_API_URL}/video/{vid_id}?api={API_KEY}" if is_video else f"{API_URL}/song/{vid_id}?api={API_KEY}"
+        url = (
+            f"{VIDEO_API_URL}/video/{vid_id}?api={API_KEY}"
+            if is_video
+            else f"{API_URL}/song/{vid_id}?api={API_KEY}"
+        )
         session = await get_session()
-        async with session.get(url, timeout=5) as resp:
-            if resp.status != 200: return None
+        async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+            if resp.status != 200:
+                return None
             data = await resp.json()
             if data.get("status", "").lower() == "done" and data.get("link"):
                 return await _download_stream(data.get("link"), path)
-    except: return None
+    except Exception:
+        return None
 
 
 async def engine_shuvo(link: str, is_video: bool, path: str) -> str:
@@ -393,22 +477,27 @@ async def engine_shuvo(link: str, is_video: bool, path: str) -> str:
     SHUVO_KEY = "SHUVO-apis"
     try:
         import json as _json
+
         session = await get_session()
         headers = {"X-API-Key": SHUVO_KEY, "Content-Type": "application/json"}
         endpoint = "/api/download" if is_video else "/api/audio"
         payload = _json.dumps({"url": link}).encode()
         async with session.post(
-            f"{SHUVO_API}{endpoint}", data=payload, headers=headers,
-            timeout=aiohttp.ClientTimeout(total=25)
+            f"{SHUVO_API}{endpoint}",
+            data=payload,
+            headers=headers,
+            timeout=aiohttp.ClientTimeout(total=25),
         ) as resp:
             if resp.status != 200:
                 return None
             data = await resp.json()
         dl_url = (
-            data.get("download_url") or data.get("audio_url") or
-            data.get("url") or data.get("link") or
-            (data.get("data") or {}).get("download_url") or
-            (data.get("data") or {}).get("url")
+            data.get("download_url")
+            or data.get("audio_url")
+            or data.get("url")
+            or data.get("link")
+            or (data.get("data") or {}).get("download_url")
+            or (data.get("data") or {}).get("url")
         )
         if dl_url:
             return await _download_stream(dl_url, path)
@@ -416,14 +505,30 @@ async def engine_shuvo(link: str, is_video: bool, path: str) -> str:
         pass
     return None
 
+
+# ── CORE DOWNLOAD — Raj first, then Yoru chain ────────────────────
 async def _core_download(link: str, is_video: bool) -> str:
-    vid_id = link.split('v=')[-1].split('&')[0] if 'v=' in link else link.split("/")[-1].split("?")[0]
+    vid_id = (
+        link.split("v=")[-1].split("&")[0]
+        if "v=" in link
+        else link.split("/")[-1].split("?")[0]
+    )
     ext = "mp4" if is_video else "mp3"
     final_path = os.path.join(DOWNLOAD_DIR, f"{vid_id}.{ext}")
 
     if os.path.exists(final_path) and os.path.getsize(final_path) > 1024:
         return final_path
 
+    # ── 1st: Raj (Annie API) ──────────────────────────────────────
+    raj_result = await engine_raj(link, is_video, f"{final_path}_raj")
+    if raj_result and os.path.exists(raj_result):
+        try:
+            os.rename(raj_result, final_path)
+            return final_path
+        except OSError:
+            return raj_result
+
+    # ── 2nd: VDA ─────────────────────────────────────────────────
     vda_path = await engine_vda(link, is_video, f"{final_path}_vda")
     if vda_path and os.path.exists(vda_path):
         try:
@@ -432,7 +537,7 @@ async def _core_download(link: str, is_video: bool) -> str:
         except OSError:
             return vda_path
 
-    # Keep the existing API engines as fallbacks; no YouTube cookies are used.
+    # ── 3rd: Shuvo / Shruti / Xbit / Nexgen (race) ───────────────
     tasks = [
         asyncio.create_task(engine_shuvo(link, is_video, f"{final_path}_shuvo")),
         asyncio.create_task(engine_shrutibots(vid_id, is_video, f"{final_path}_shruti")),
@@ -457,7 +562,9 @@ async def _core_download(link: str, is_video: bool) -> str:
         except OSError:
             return winner
 
+    # ── 4th: yt-dlp fallback ─────────────────────────────────────
     loop = asyncio.get_running_loop()
+
     def fallback_ytdl():
         opts = {
             "format": "best[height<=480]/best" if is_video else "bestaudio/best",
@@ -473,17 +580,24 @@ async def _core_download(link: str, is_video: bool) -> str:
         await loop.run_in_executor(None, fallback_ytdl)
     except Exception:
         return None
-    return final_path if os.path.exists(final_path) and os.path.getsize(final_path) > 1024 else None
+
+    return (
+        final_path
+        if os.path.exists(final_path) and os.path.getsize(final_path) > 1024
+        else None
+    )
+
 
 async def download_song(link: str) -> str:
     return await _core_download(link, is_video=False)
+
 
 async def download_video(link: str) -> str:
     return await _core_download(link, is_video=True)
 
 
+# ── VIDEO INFO ────────────────────────────────────────────────────
 async def get_exact_video_info(video_id: str):
-    """Resolve one exact YouTube ID without using a cookie file."""
     video_id = str(video_id or "").strip()
     cached = VIDEO_INFO_CACHE.get(video_id)
     if cached and time.monotonic() - cached[0] < CACHE_TTL_SECONDS:
@@ -519,7 +633,8 @@ async def get_exact_video_info(video_id: str):
             "title": data.get("title") or "Unknown",
             "durationText": f"{mins:02d}:{secs:02d}",
             "durationSeconds": duration_seconds,
-            "thumbnail": data.get("thumbnail") or f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg",
+            "thumbnail": data.get("thumbnail")
+            or f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg",
             "viewCount": data.get("view_count") or "Unknown",
             "channelTitle": data.get("uploader") or data.get("channel") or "YouTube",
             "channelUrl": data.get("channel_url") or "https://www.youtube.com",
@@ -529,7 +644,6 @@ async def get_exact_video_info(video_id: str):
         VIDEO_INFO_CACHE[video_id] = (time.monotonic(), result)
         return result
 
-    # yt-dlp failure: use the search API only if it returns the same exact ID.
     for result in await search_youtube_api(video_id):
         if str(result.get("videoId", "")) == video_id:
             VIDEO_INFO_CACHE[video_id] = (time.monotonic(), result)
@@ -538,21 +652,13 @@ async def get_exact_video_info(video_id: str):
 
 
 async def get_related_videos(video_id: str, limit: int = 10):
-    """
-    Real 'up next' songs for a video — pulled from YouTube's own auto-generated
-    Mix/Radio playlist (the same list YouTube itself uses for autoplay), not a
-    generic title search (which mostly just returns re-uploads/covers of the
-    same track). Returns a list of {"videoId", "title"} dicts, freshest first.
-    """
     video_id = str(video_id or "").strip()
     if not re.fullmatch(r"[A-Za-z0-9_-]{6,}", video_id):
         return []
-
     cached = RELATED_CACHE.get(video_id)
     now = time.monotonic()
     if cached and now - cached[0] < RELATED_CACHE_TTL_SECONDS:
         return cached[1]
-
     mix_url = f"https://www.youtube.com/watch?v={video_id}&list=RD{video_id}"
     loop = asyncio.get_running_loop()
 
@@ -582,14 +688,15 @@ async def get_related_videos(video_id: str, limit: int = 10):
                 continue
             vid = entry.get("id")
             if not vid or vid == video_id:
-                continue  # skip the seed song itself
-            entries.append({"videoId": vid, "title": entry.get("title") or "Unknown"})
-
+                continue
+            entries.append(
+                {"videoId": vid, "title": entry.get("title") or "Unknown"}
+            )
     RELATED_CACHE[video_id] = (now, entries)
     return entries
 
 
-
+# ── YouTubeAPI CLASS ───────────────────────────────────────────────
 class YouTubeAPI:
     def __init__(self):
         self.base = "https://www.youtube.com/watch?v="
@@ -599,23 +706,30 @@ class YouTubeAPI:
         self.reg = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 
     async def exists(self, link: str, videoid: Union[bool, str] = None):
-        if videoid: link = self.base + link
+        if videoid:
+            link = self.base + link
         return bool(re.search(self.regex, link))
 
     async def url(self, message_1: Message) -> Union[str, None]:
         messages = [message_1]
-        if message_1.reply_to_message: messages.append(message_1.reply_to_message)
+        if message_1.reply_to_message:
+            messages.append(message_1.reply_to_message)
         for msg in messages:
-            for ent in (msg.entities or []):
-                if ent.type == MessageEntityType.URL: return (msg.text or msg.caption)[ent.offset : ent.offset + ent.length]
-            for ent in (msg.caption_entities or []):
-                if ent.type == MessageEntityType.TEXT_LINK: return ent.url
+            for ent in msg.entities or []:
+                if ent.type == MessageEntityType.URL:
+                    return (msg.text or msg.caption)[
+                        ent.offset: ent.offset + ent.length
+                    ]
+            for ent in msg.caption_entities or []:
+                if ent.type == MessageEntityType.TEXT_LINK:
+                    return ent.url
         return None
 
     async def details(self, link: str, videoid: Union[bool, str] = None):
-        if videoid: link = self.base + link
-        if "&" in link: link = link.split("&")[0]
-        # Direct YouTube URL — resolve the exact ID with cookies first.
+        if videoid:
+            link = self.base + link
+        if "&" in link:
+            link = link.split("&")[0]
         if re.search(self.regex, link):
             try:
                 direct_id = _extract_video_id(link)
@@ -624,10 +738,12 @@ class YouTubeAPI:
                     vid = exact.get("videoId") or direct_id
                     dur_sec = int(exact.get("durationSeconds") or 0)
                     dur_min = exact.get("durationText") or "00:00"
-                    thumbnail = exact.get("thumbnail") or f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"
+                    thumbnail = exact.get("thumbnail") or (
+                        f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg"
+                    )
                     return exact.get("title", "Unknown"), dur_min, dur_sec, thumbnail, vid
             except Exception:
-                pass  # fallback to search below
+                pass
         search_results = await search_youtube_api(link)
         if not search_results:
             raise ValueError("No YouTube results found")
@@ -638,7 +754,11 @@ class YouTubeAPI:
         thumbnail = _result_thumbnail(result, vidid) if vidid else ""
         if not vidid:
             raise ValueError("Search result has no video ID")
-        duration_sec = int(result.get("durationSeconds") or time_to_seconds(duration_min)) if duration_min else 0
+        duration_sec = (
+            int(result.get("durationSeconds") or time_to_seconds(duration_min))
+            if duration_min
+            else 0
+        )
         return title, duration_min, duration_sec, thumbnail, vidid
 
     async def title(self, link: str, videoid: Union[bool, str] = None):
@@ -651,26 +771,38 @@ class YouTubeAPI:
         return (await self.details(link, videoid))[3]
 
     async def video(self, link: str, videoid: Union[bool, str] = None):
-        if videoid: link = self.base + link
-        if "&" in link: link = link.split("&")[0]
+        if videoid:
+            link = self.base + link
+        if "&" in link:
+            link = link.split("&")[0]
         try:
             res = await download_video(link)
             return (1, res) if res else (0, "Video download failed")
         except Exception as e:
             return 0, f"Video download error: {e}"
 
-    async def playlist(self, link, limit, user_id, videoid: Union[bool, str] = None):
-        if videoid: link = self.listbase + link
-        if "&" in link: link = link.split("&")[0]
+    async def playlist(
+        self, link, limit, user_id, videoid: Union[bool, str] = None
+    ):
+        if videoid:
+            link = self.listbase + link
+        if "&" in link:
+            link = link.split("&")[0]
         try:
             videos = (await Playlist.get(link)).get("videos") or []
-            return [data["id"] for data in videos[:limit] if data and data.get("id")]
-        except: return []
+            return [
+                data["id"]
+                for data in videos[:limit]
+                if data and data.get("id")
+            ]
+        except Exception:
+            return []
 
     async def track(self, link: str, videoid: Union[bool, str] = None):
-        if videoid: link = self.base + link
-        if "&" in link: link = link.split("&")[0]
-        # Direct YouTube URL — resolve the exact ID with cookies first.
+        if videoid:
+            link = self.base + link
+        if "&" in link:
+            link = link.split("&")[0]
         if re.search(self.regex, link):
             try:
                 direct_id = _extract_video_id(link)
@@ -679,13 +811,15 @@ class YouTubeAPI:
                     vid = exact.get("videoId") or direct_id
                     return {
                         "title": exact.get("title", "Unknown"),
-                        "link": exact.get("watchUrl") or f"https://www.youtube.com/watch?v={vid}",
+                        "link": exact.get("watchUrl")
+                        or f"https://www.youtube.com/watch?v={vid}",
                         "vidid": vid,
                         "duration_min": exact.get("durationText") or "00:00",
-                        "thumb": exact.get("thumbnail") or f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg",
+                        "thumb": exact.get("thumbnail")
+                        or f"https://i.ytimg.com/vi/{vid}/hqdefault.jpg",
                     }, vid
             except Exception:
-                pass  # fallback to search below
+                pass
         search_results = await search_youtube_api(link)
         if not search_results:
             raise ValueError("No YouTube results found")
@@ -699,12 +833,14 @@ class YouTubeAPI:
             "videoId": vidid,
             "title": result.get("title", "Unknown"),
             "durationText": duration_text,
-            "durationSeconds": int(result.get("durationSeconds") or time_to_seconds(duration_text)),
+            "durationSeconds": int(
+                result.get("durationSeconds") or time_to_seconds(duration_text)
+            ),
             "thumbnail": thumb.split("?")[0],
-            "watchUrl": result.get("watchUrl") or f"https://www.youtube.com/watch?v={vidid}",
+            "watchUrl": result.get("watchUrl")
+            or f"https://www.youtube.com/watch?v={vidid}",
         }
         VIDEO_INFO_CACHE[vidid] = (time.monotonic(), cached_info)
-        # Pre-resolve the cookie-less GameOver stream in the background so download() is instant later.
         asyncio.create_task(_prefetch_gameover(vidid, cached_info["title"]))
         return {
             "title": cached_info["title"],
@@ -715,8 +851,10 @@ class YouTubeAPI:
         }, vidid
 
     async def formats(self, link: str, videoid: Union[bool, str] = None):
-        if videoid: link = self.base + link
-        if "&" in link: link = link.split("&")[0]
+        if videoid:
+            link = self.base + link
+        if "&" in link:
+            link = link.split("&")[0]
         base_fmt_opts = {
             "quiet": True,
             "no_warnings": True,
@@ -728,36 +866,66 @@ class YouTubeAPI:
         except Exception:
             with yt_dlp.YoutubeDL(base_fmt_opts) as ydl:
                 info = ydl.extract_info(link, download=False)
-        return [{"format": f["format"], "filesize": f.get("filesize"), "format_id": f["format_id"], "ext": f["ext"], "format_note": f.get("format_note"), "yturl": link} for f in info["formats"] if "dash" not in str(f.get("format", "")).lower()], link
+        return [
+            {
+                "format": f["format"],
+                "filesize": f.get("filesize"),
+                "format_id": f["format_id"],
+                "ext": f["ext"],
+                "format_note": f.get("format_note"),
+                "yturl": link,
+            }
+            for f in info["formats"]
+            if "dash" not in str(f.get("format", "")).lower()
+        ], link
 
-    async def slider(self, link: str, query_type: int, videoid: Union[bool, str] = None):
-        if videoid: link = self.base + link
-        if "&" in link: link = link.split("&")[0]
+    async def slider(
+        self, link: str, query_type: int, videoid: Union[bool, str] = None
+    ):
+        if videoid:
+            link = self.base + link
+        if "&" in link:
+            link = link.split("&")[0]
         results = await search_youtube_api(link)
         if not results or query_type >= len(results):
             raise ValueError("No YouTube results found")
         res = results[query_type]
         thumb = _result_thumbnail(res, res["videoId"])
-        return res.get("title", "Unknown"), res.get("durationText") or "00:00", thumb, res["videoId"]
+        return (
+            res.get("title", "Unknown"),
+            res.get("durationText") or "00:00",
+            thumb,
+            res["videoId"],
+        )
 
     async def download(
-        self, link: str, mystic, video: Union[bool, str] = None, videoid: Union[bool, str] = None,
-        songaudio: Union[bool, str] = None, songvideo: Union[bool, str] = None,
-        format_id: Union[bool, str] = None, title: Union[bool, str] = None,
+        self,
+        link: str,
+        mystic,
+        video: Union[bool, str] = None,
+        videoid: Union[bool, str] = None,
+        songaudio: Union[bool, str] = None,
+        songvideo: Union[bool, str] = None,
+        format_id: Union[bool, str] = None,
+        title: Union[bool, str] = None,
     ) -> str:
-        if videoid: link = self.base + link
-        
-        is_video = bool(video)
-        vid_id = link.split('v=')[-1].split('&')[0] if 'v=' in link else link.split("/")[-1].split("?")[0]
+        if videoid:
+            link = self.base + link
 
-        # GameOver direct API — check the background-prefetched cache first (instant, no extra round-trip).
+        is_video = bool(video)
+        vid_id = (
+            link.split("v=")[-1].split("&")[0]
+            if "v=" in link
+            else link.split("/")[-1].split("?")[0]
+        )
+
+        # GameOver cache check (audio only)
         if not is_video:
             cached = GAMEOVER_CACHE.get(vid_id)
             if cached and time.monotonic() - cached[0] < CACHE_TTL_SECONDS:
                 stream_url = cached[1].get("stream_url")
                 if stream_url:
                     return stream_url, False
-            # In-memory cache expired/missing — check the persistent (mongodb) cache before calling the API again.
             persisted = await get_persisted_gameover(vid_id)
             if persisted and persisted.get("stream_url"):
                 GAMEOVER_CACHE[vid_id] = (time.monotonic(), persisted)
@@ -768,11 +936,10 @@ class YouTubeAPI:
         is_live = False
         try:
             title_text, _, duration_sec, _, _ = await self.details(link)
-        except:
+        except Exception:
             is_live = True
 
-        # GameOver direct API — search-based resolve straight to a playable
-        # stream_url. This is the primary audio path and avoids cookies.
+        # GameOver direct resolve (audio only)
         if not is_video:
             try:
                 is_direct_url = bool(re.search(self.regex, link))
@@ -787,52 +954,71 @@ class YouTubeAPI:
             except Exception:
                 pass
 
-        # <emoji id='5258203794772085854'>⚡</emoji> 1 HOUR LIMIT BYPASS (>3600 sec)
+        # 1 hour+ / live stream path
         if is_live or duration_sec == 0 or duration_sec > 3600:
-            # No cookie lookup here. Use the configured API proxy first.
             try:
                 session = await get_session()
-                async with session.get(f"{YTPROXY_URL}/info/{vid_id}", headers={"x-api-key": YT_API_KEY}, timeout=3) as r:
+                async with session.get(
+                    f"{YTPROXY_URL}/info/{vid_id}",
+                    headers={"x-api-key": YT_API_KEY},
+                    timeout=aiohttp.ClientTimeout(total=3),
+                ) as r:
                     if r.status == 200:
                         data = await r.json()
-                        stream_url = data.get('video_url') if is_video else data.get('audio_url')
-                        if stream_url: return stream_url, False 
-            except: pass
-            
+                        stream_url = (
+                            data.get("video_url") if is_video else data.get("audio_url")
+                        )
+                        if stream_url:
+                            return stream_url, False
+            except Exception:
+                pass
+
             loop = asyncio.get_running_loop()
+
             def extract_direct_url():
-                format_str = "best[height<=480]/best" if is_video else "bestaudio/best"
+                format_str = (
+                    "best[height<=480]/best" if is_video else "bestaudio/best"
+                )
                 base_opts = {
-                    "quiet": True, "no_warnings": True,
-                    "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
+                    "quiet": True,
+                    "no_warnings": True,
+                    "extractor_args": {
+                        "youtube": {"player_client": ["android", "web"]}
+                    },
                     "format": format_str,
                 }
-                # VPS pe bina cookies android client kaam karta hai
                 try:
                     with yt_dlp.YoutubeDL(base_opts) as ydl:
                         info = ydl.extract_info(link, download=False)
-                        url = info.get("url") or (info.get("formats") or [{}])[-1].get("url")
-                        if url: return url
+                        url = info.get("url") or (
+                            info.get("formats") or [{}]
+                        )[-1].get("url")
+                        if url:
+                            return url
                 except Exception:
                     pass
-                # Fallback without cookies; VDA handles authenticated downloads.
                 try:
                     with yt_dlp.YoutubeDL(base_opts) as ydl:
                         info = ydl.extract_info(link, download=False)
-                        return info.get("url") or (info.get("formats") or [{}])[-1].get("url")
+                        return info.get("url") or (
+                            info.get("formats") or [{}]
+                        )[-1].get("url")
                 except Exception:
                     return None
 
-
-            
             try:
                 direct_url = await loop.run_in_executor(None, extract_direct_url)
-                if direct_url: return direct_url, False
-            except: pass
+                if direct_url:
+                    return direct_url, False
+            except Exception:
+                pass
 
-        # <emoji id='5258203794772085854'>⚡</emoji> REGULAR DOWNLOAD (Chunk mode for Zero Error)
+        # Regular download — Raj first, then Yoru chain
         try:
             res = await _core_download(link, is_video)
             return (res, True) if res else (None, False)
-        except:
+        except Exception:
             return None, False
+
+
+YouTube = YouTubeAPI()
