@@ -740,7 +740,7 @@ class Call(PyTgCalls):
                 )
             except Exception:
                 return await mystic.edit_text(
-                    _["call_6"], disable_web_page_preview=True
+                    _["call_6"], link_preview=False
                 )
             stream = self._build_stream(file_path, video=video)
             try:
