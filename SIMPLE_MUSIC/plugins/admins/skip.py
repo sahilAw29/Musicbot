@@ -16,7 +16,7 @@ from pyrogram.types import InlineKeyboardMarkup, Message
 
 import asyncio
 import config
-from SIMPLE_MUSIC import YouTube, app
+from SIMPLE_MUSIC import YouTube, app, LOGGER   # ← FIXED: added LOGGER import
 from SIMPLE_MUSIC.core.call import SIMPLE, _clear_
 from SIMPLE_MUSIC.misc import db
 from SIMPLE_MUSIC.utils.database import get_loop, is_autoplay
@@ -49,7 +49,9 @@ async def skip(cli, message: Message, _, chat_id):
                             popped = None
                             try:
                                 popped = check.pop(0)
-                            except:
+                            except Exception as e:
+                                # FIXED: was bare except: before — now logged
+                                LOGGER(__name__).exception(f"[skip multi] queue pop failed for chat {chat_id}: {e}")
                                 return await message.reply_text(_["admin_12"])
                             if popped:
                                 await auto_clean(popped)
@@ -80,7 +82,9 @@ async def skip(cli, message: Message, _, chat_id):
                 await _clear_(chat_id)
                 await SIMPLE.show_no_more_songs_card(chat_id, popped)
                 return
-        except:
+        except Exception as e:
+            # FIXED: log it so you can see WHY skip is failing
+            LOGGER(__name__).exception(f"[skip] queue pop failed for chat {chat_id}: {e}")
             try:
                 await message.reply_text(
                     text=_["admin_6"].format(
@@ -89,8 +93,9 @@ async def skip(cli, message: Message, _, chat_id):
                     reply_markup=close_markup(_),
                 )
                 return await SIMPLE.stop_stream(chat_id)
-            except:
+            except Exception:
                 return
+
     queued = check[0]["file"]
     SIMPLE._autoplay_reserved[chat_id] = False
     if len(check) == 1 and await is_autoplay(chat_id):
@@ -109,17 +114,20 @@ async def skip(cli, message: Message, _, chat_id):
         db[chat_id][0]["seconds"] = check[0]["old_second"]
         db[chat_id][0]["speed_path"] = None
         db[chat_id][0]["speed"] = 1.0
+
     if "live_" in queued:
         n, link = await YouTube.video(videoid, True)
         if n == 0:
             return await message.reply_text(_["admin_7"].format(title))
         try:
             image = await YouTube.thumbnail(videoid, True)
-        except:
+        except Exception:
             image = None
         try:
             await SIMPLE.skip_stream(chat_id, link, video=status, image=image)
-        except:
+        except Exception as e:
+            # FIXED: log the actual error
+            LOGGER(__name__).exception(f"[skip live_] skip_stream failed for chat {chat_id}: {e}")
             return await message.reply_text(_["call_6"])
         button = await stream_markup(_, chat_id)
         img = await get_thumb(videoid)
@@ -135,6 +143,7 @@ async def skip(cli, message: Message, _, chat_id):
         )
         db[chat_id][0]["mystic"] = run
         db[chat_id][0]["markup"] = "tg"
+
     elif "vid_" in queued:
         mystic = await message.reply_text(_["call_7"], disable_web_page_preview=True)
         try:
@@ -144,15 +153,17 @@ async def skip(cli, message: Message, _, chat_id):
                 videoid=True,
                 video=status,
             )
-        except:
+        except Exception as e:
+            LOGGER(__name__).exception(f"[skip vid_] download failed for chat {chat_id}: {e}")
             return await mystic.edit_text(_["call_6"])
         try:
             image = await YouTube.thumbnail(videoid, True)
-        except:
+        except Exception:
             image = None
         try:
             await SIMPLE.skip_stream(chat_id, file_path, video=status, image=image)
-        except:
+        except Exception as e:
+            LOGGER(__name__).exception(f"[skip vid_] skip_stream failed for chat {chat_id}: {e}")
             return await mystic.edit_text(_["call_6"])
         button = await stream_markup(_, chat_id)
         img = await get_thumb(videoid)
@@ -169,10 +180,12 @@ async def skip(cli, message: Message, _, chat_id):
         db[chat_id][0]["mystic"] = run
         db[chat_id][0]["markup"] = "stream"
         await mystic.delete()
+
     elif "index_" in queued:
         try:
             await SIMPLE.skip_stream(chat_id, videoid, video=status)
-        except:
+        except Exception as e:
+            LOGGER(__name__).exception(f"[skip index_] skip_stream failed for chat {chat_id}: {e}")
             return await message.reply_text(_["call_6"])
         button = await stream_markup(_, chat_id)
         run = await message.reply_photo(
@@ -182,6 +195,7 @@ async def skip(cli, message: Message, _, chat_id):
         )
         db[chat_id][0]["mystic"] = run
         db[chat_id][0]["markup"] = "tg"
+
     else:
         if videoid == "telegram":
             image = check[0].get("image")
@@ -190,19 +204,20 @@ async def skip(cli, message: Message, _, chat_id):
         else:
             try:
                 image = await YouTube.thumbnail(videoid, True)
-            except:
+            except Exception:
                 image = None
         try:
             await SIMPLE.skip_stream(chat_id, queued, video=status, image=image)
-        except:
+        except Exception as e:
+            # FIXED: most common silent failure — now you'll see it in logs
+            LOGGER(__name__).exception(f"[skip] skip_stream failed for chat {chat_id}, queued='{queued}': {e}")
             return await message.reply_text(_["call_6"])
+
         if videoid == "telegram":
             button = await stream_markup(_, chat_id)
             queue_image = check[0].get("image")
             run = await message.reply_photo(
-                photo=queue_image
-                if queue_image
-                else (
+                photo=queue_image if queue_image else (
                     config.TELEGRAM_AUDIO_URL
                     if str(streamtype) == "audio"
                     else config.TELEGRAM_VIDEO_URL
@@ -217,9 +232,7 @@ async def skip(cli, message: Message, _, chat_id):
         elif videoid == "soundcloud":
             button = await stream_markup(_, chat_id)
             run = await message.reply_photo(
-                photo=config.SOUNCLOUD_IMG_URL
-                if str(streamtype) == "audio"
-                else config.TELEGRAM_VIDEO_URL,
+                photo=config.SOUNCLOUD_IMG_URL if str(streamtype) == "audio" else config.TELEGRAM_VIDEO_URL,
                 caption=_["stream_1"].format(
                     config.SUPPORT_CHAT, title[:23], check[0]["dur"], user
                 ),
