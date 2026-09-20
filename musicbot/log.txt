@@ -1,0 +1,89 @@
+[16-Sep-26 15:52:42 - INFO] - SIMPLE_MUSIC.core.mongo - Connecting to your Mongo Database...
+[16-Sep-26 15:52:42 - INFO] - SIMPLE_MUSIC.core.mongo - Connected to your Mongo Database.
+[16-Sep-26 15:52:42 - INFO] - SIMPLE_MUSIC.core.dir - Directories Updated.
+[16-Sep-26 15:52:42 - INFO] - SIMPLE_MUSIC.core.git - GitHub upstream updates disabled; using uploaded source.
+[16-Sep-26 15:52:42 - INFO] - SIMPLE_MUSIC.misc - 𝗗𝗔𝗧𝗔𝗕𝗔𝗦𝗘 𝗟𝗢𝗔𝗗 𝗕𝗔𝗕𝗬<emoji id='5305764639110353096'>🍫</emoji>........
+[16-Sep-26 15:52:42 - INFO] - SIMPLE_MUSIC.core.bot - Starting Bot...
+[16-Sep-26 15:52:53 - INFO] - SIMPLE_MUSIC.misc - 𝗦𝗨𝗗𝗢 𝗨𝗦𝗘𝗥 𝗗𝗢𝗡𝗘<emoji id='5325547803936572038'>✨</emoji>🎋.
+[16-Sep-26 15:52:59 - INFO] - SIMPLE_MUSIC.core.bot - Yoru Music Bot Started as ♪ ˹ Y ᥆ 𝗋 ᥙ ┋ 𐌼 ᥙ s ɪ ᴄ ˼ㅤ 🇲🇫 
+[16-Sep-26 15:52:59 - INFO] - SIMPLE_MUSIC - Bot commands set successfully!
+[16-Sep-26 15:53:00 - INFO] - apscheduler.scheduler - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+[16-Sep-26 15:53:00 - INFO] - apscheduler.scheduler - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+[16-Sep-26 15:53:00 - INFO] - apscheduler.scheduler - Added job "start_nightmode" to job store "default"
+[16-Sep-26 15:53:00 - INFO] - apscheduler.scheduler - Added job "close_nightmode" to job store "default"
+[16-Sep-26 15:53:00 - INFO] - apscheduler.scheduler - Scheduler started
+[16-Sep-26 15:53:00 - INFO] - SIMPLE_MUSIC.plugins - 𝗬𝗼𝗿𝘂 𝗠𝘂𝘀𝗶𝗰 𝗕𝗼𝘁 𝗜𝘀 𝗥𝗲𝗮𝗱𝘆<emoji id='5317026657540780588'>🥳</emoji>...
+[16-Sep-26 15:53:00 - INFO] - SIMPLE_MUSIC.core.userbot - Starting Assistants...
+[16-Sep-26 15:53:01 - ERROR] - asyncio - Unclosed client session
+client_session: <aiohttp.client.ClientSession object at 0x7f991f7ec260>
+[16-Sep-26 15:53:01 - ERROR] - asyncio - Unclosed client session
+client_session: <aiohttp.client.ClientSession object at 0x7f9921c6fa40>
+[16-Sep-26 15:54:52 - INFO] - SIMPLE_MUSIC.core.mongo - Connecting to your Mongo Database...
+[16-Sep-26 15:54:52 - INFO] - SIMPLE_MUSIC.core.mongo - Connected to your Mongo Database.
+[16-Sep-26 15:54:52 - INFO] - SIMPLE_MUSIC.core.dir - Directories Updated.
+[16-Sep-26 15:54:52 - INFO] - SIMPLE_MUSIC.core.git - GitHub upstream updates disabled; using uploaded source.
+[16-Sep-26 15:54:52 - INFO] - SIMPLE_MUSIC.misc - 𝗗𝗔𝗧𝗔𝗕𝗔𝗦𝗘 𝗟𝗢𝗔𝗗 𝗕𝗔𝗕𝗬<emoji id='5305764639110353096'>🍫</emoji>........
+[16-Sep-26 15:54:52 - INFO] - SIMPLE_MUSIC.core.bot - Starting Bot...
+[16-Sep-26 15:55:02 - INFO] - SIMPLE_MUSIC.misc - 𝗦𝗨𝗗𝗢 𝗨𝗦𝗘𝗥 𝗗𝗢𝗡𝗘<emoji id='5325547803936572038'>✨</emoji>🎋.
+[16-Sep-26 15:55:09 - INFO] - SIMPLE_MUSIC.core.bot - Yoru Music Bot Started as ♪ ˹ Y ᥆ 𝗋 ᥙ ┋ 𐌼 ᥙ s ɪ ᴄ ˼ㅤ 🇲🇫 
+[16-Sep-26 15:55:09 - INFO] - SIMPLE_MUSIC - Bot commands set successfully!
+[16-Sep-26 15:55:09 - INFO] - apscheduler.scheduler - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+[16-Sep-26 15:55:09 - INFO] - apscheduler.scheduler - Adding job tentatively -- it will be properly scheduled when the scheduler starts
+[16-Sep-26 15:55:09 - INFO] - apscheduler.scheduler - Added job "start_nightmode" to job store "default"
+[16-Sep-26 15:55:09 - INFO] - apscheduler.scheduler - Added job "close_nightmode" to job store "default"
+[16-Sep-26 15:55:09 - INFO] - apscheduler.scheduler - Scheduler started
+[16-Sep-26 15:55:09 - INFO] - SIMPLE_MUSIC.plugins - 𝗬𝗼𝗿𝘂 𝗠𝘂𝘀𝗶𝗰 𝗕𝗼𝘁 𝗜𝘀 𝗥𝗲𝗮𝗱𝘆<emoji id='5317026657540780588'>🥳</emoji>...
+[16-Sep-26 15:55:09 - INFO] - SIMPLE_MUSIC.core.userbot - Starting Assistants...
+[16-Sep-26 15:55:10 - INFO] - SIMPLE_MUSIC.core.userbot - Assistant Started as <a href=tg://user?id=8486345593>˹Yᴏʀᴜ ꭙ Mᴜꜱɪᴄ !! 🌿</a>
+[16-Sep-26 15:55:10 - INFO] - SIMPLE_MUSIC.core.call - Starting PyTgCalls Client...
+
+[16-Sep-26 15:55:10 - INFO] - SIMPLE_MUSIC - ╔═════ஜ۩۞۩ஜ════╗
+  ☠︎︎𝗬𝗢𝗥𝗨 𝗠𝗨𝗦𝗜𝗖 𝗕𝗢𝗧
+╚═════ஜ۩۞۩ஜ════╝
+[16-Sep-26 16:00:03 - ERROR] - pyrogram.dispatcher - Unexpected exception raised in CallbackQueryHandler:
+Traceback (most recent call last):
+  File "/home/ubuntu/.local/lib/python3.12/site-packages/pyrogram/dispatcher.py", line 477, in handler_worker
+    await handler.callback(self.client, *args)
+  File "/home/ubuntu/work_musicbot/musicbot/SIMPLE_MUSIC/plugins/tools/adminpanel.py", line 112, in adm_media_cb
+    await query.message.edit_text(
+  File "/home/ubuntu/.local/lib/python3.12/site-packages/pyrogram/types/messages_and_media/message.py", line 8662, in edit_text
+    return await self._client.edit_message_text(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/.local/lib/python3.12/site-packages/pyrogram/methods/messages/edit_message_text.py", line 140, in edit_message_text
+    r = await self.invoke(
+        ^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/.local/lib/python3.12/site-packages/pyrogram/methods/advanced/invoke.py", line 108, in invoke
+    r = await session.invoke(
+        ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/.local/lib/python3.12/site-packages/pyrogram/session/session.py", line 608, in invoke
+    return await self.send(query, timeout=timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/.local/lib/python3.12/site-packages/pyrogram/session/session.py", line 573, in send
+    RPCError.raise_it(result, type(data))
+  File "/home/ubuntu/.local/lib/python3.12/site-packages/pyrogram/errors/rpc_error.py", line 154, in raise_it
+    raise error_type(
+pyrogram.errors.exceptions.bad_request_400.MessageNotModified: Telegram says: [400 MESSAGE_NOT_MODIFIED] - The message was not modified because you tried to edit it using the same content. (caused by "messages.EditMessage")
+[16-Sep-26 16:00:31 - ERROR] - pyrogram.dispatcher - Unexpected exception raised in MessageHandler:
+Traceback (most recent call last):
+  File "/home/ubuntu/.local/lib/python3.12/site-packages/pyrogram/dispatcher.py", line 477, in handler_worker
+    await handler.callback(self.client, *args)
+  File "/home/ubuntu/work_musicbot/musicbot/SIMPLE_MUSIC/plugins/bot/start.py", line 186, in start_pm
+    await client.send_photo(
+  File "/home/ubuntu/.local/lib/python3.12/site-packages/pyrogram/methods/messages/send_photo.py", line 287, in send_photo
+    media = utils.get_input_media_from_file_id(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/.local/lib/python3.12/site-packages/pyrogram/utils.py", line 84, in get_input_media_from_file_id
+    raise ValueError(
+ValueError: Expected PHOTO, got VIDEO file id instead
+[16-Sep-26 16:03:11 - ERROR] - pyrogram.dispatcher - Unexpected exception raised in MessageHandler:
+Traceback (most recent call last):
+  File "/home/ubuntu/.local/lib/python3.12/site-packages/pyrogram/dispatcher.py", line 477, in handler_worker
+    await handler.callback(self.client, *args)
+  File "/home/ubuntu/work_musicbot/musicbot/SIMPLE_MUSIC/plugins/bot/start.py", line 186, in start_pm
+    await client.send_photo(
+  File "/home/ubuntu/.local/lib/python3.12/site-packages/pyrogram/methods/messages/send_photo.py", line 287, in send_photo
+    media = utils.get_input_media_from_file_id(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/.local/lib/python3.12/site-packages/pyrogram/utils.py", line 84, in get_input_media_from_file_id
+    raise ValueError(
+ValueError: Expected PHOTO, got VIDEO file id instead

@@ -1,0 +1,43 @@
+# -----------------------------------------------
+# 🔸 YORU MUSIC BOT Project
+# 🔹 Developed & Maintained by: Yoru Music Bot ()
+# 📅 Copyright © 2026 – All Rights Reserved
+#
+# 📖 License:
+# This source code is open for educational and non-commercial use ONLY.
+# You are required to retain this credit in all copies or substantial portions of this file.
+# Commercial use, redistribution, or removal of this notice is strictly prohibited
+# without prior written permission from the author.
+#
+# ❤️ Made with dedication and love by Yoru Music Bot
+# -----------------------------------------------
+import aiohttp
+from io import BytesIO
+from SIMPLE_MUSIC import app
+from pyrogram import filters
+
+async def make_carbon(code):
+    url = "https://carbonara.solopov.dev/api/cook"
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, json={"code": code}) as resp:
+            image = BytesIO(await resp.read())
+    image.name = "carbon.png"
+    return image
+
+
+@app.on_message(filters.command("carbon"))
+async def _carbon(client, message):
+    replied = message.reply_to_message
+    if not replied:
+        await message.reply_text("<b>ʀᴇᴘʟʏ ᴛᴏ ᴀ ᴛᴇxᴛ ᴍᴇssᴀɢᴇ ᴛᴏ ᴍᴀᴋᴇ ᴀ ᴄᴀʀʙᴏɴ.</b>")
+        return
+    if not (replied.text or replied.caption):
+        return await message.reply_text("<b>ʀᴇᴘʟʏ ᴛᴏ ᴀ ᴛᴇxᴛ ᴍᴇssᴀɢᴇ ᴛᴏ ᴍᴀᴋᴇ ᴀ ᴄᴀʀʙᴏɴ.</b>")
+    text = await message.reply("Processing...")
+    carbon = await make_carbon(replied.text or replied.caption)
+    await text.edit("<b>ᴜᴘʟᴏᴀᴅɪɴɢ...</b>")
+    await message.reply_photo(carbon)
+    await text.delete()
+    carbon.close()
+
+

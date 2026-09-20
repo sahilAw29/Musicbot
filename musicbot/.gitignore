@@ -1,0 +1,22 @@
+# Environment & secrets
+.env
+*.session
+*.session-journal
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+venv/
+env/
+.venv/
+
+# Logs
+*.log
+
+# OS junk
+.DS_Store
+Thumbs.db
