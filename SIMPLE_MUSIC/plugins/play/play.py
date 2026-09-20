@@ -46,6 +46,8 @@ async def send_loading_sticker(target_message):
     represents these very differently, so we detect which one we have and
     send it the right way instead of always calling reply_sticker."""
     sticker_id = getattr(config, "LOADING_STICKER_ID", "CAACAgUAAxkBAAEh4PxqiaBLfDX8oIaBrlN0mHSJ7Td0RAAC0CMAAkEtGVWBmO4GOjbcQj0E")
+    if isinstance(sticker_id, str) and sticker_id.startswith("emoji:"):
+        return await target_message.reply_text(sticker_id[6:] or "⏳")
     if sticker_id and str(sticker_id).isdigit():
         from pyrogram.enums import ParseMode
         return await target_message.reply(

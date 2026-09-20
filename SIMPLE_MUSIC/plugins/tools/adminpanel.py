@@ -134,8 +134,15 @@ async def adm_media_view_cb(_, query: CallbackQuery):
         # in an order that matches what the slot is meant for, falling back gracefully.
         if mtype == "sticker":
             try:
-                await app.send_sticker(query.message.chat.id, current)
-                await app.send_message(query.message.chat.id, text, reply_markup=_media_detail_markup(i))
+                if isinstance(current, str) and current.startswith("emoji:"):
+                    await app.send_message(
+                        query.message.chat.id,
+                        f"{current[6:] or '⏳'}\n\n{text}",
+                        reply_markup=_media_detail_markup(i),
+                    )
+                else:
+                    await app.send_sticker(query.message.chat.id, current)
+                    await app.send_message(query.message.chat.id, text, reply_markup=_media_detail_markup(i))
                 sent = True
             except Exception:
                 # Stored value wasn't a sticker file_id — it's a custom-emoji
@@ -153,7 +160,14 @@ async def adm_media_view_cb(_, query: CallbackQuery):
                 except Exception:
                     sent = False
         else:
-            for send_fn in (app.send_photo, app.send_video, app.send_animation):
+            # Dispatch according to the configured slot type. Photo slots
+            # remain backwards-compatible with video/animation values.
+            send_functions = (
+                (app.send_video, app.send_animation, app.send_photo)
+                if mtype == "video"
+                else (app.send_photo, app.send_video, app.send_animation)
+            )
+            for send_fn in send_functions:
                 try:
                     await send_fn(query.message.chat.id, current, caption=text, reply_markup=_media_detail_markup(i))
                     sent = True
@@ -175,7 +189,7 @@ async def adm_media_change_cb(_, query: CallbackQuery):
     hint = {
         "photo": "ᴇᴋ ᴘʜᴏᴛᴏ, ᴠɪᴅᴇᴏ, GIF ʙʜᴇᴊᴏ ʏᴀ ᴜsᴋᴀ ᴅɪʀᴇᴄᴛ URL.",
         "video": "ᴇᴋ ᴠɪᴅᴇᴏ, GIF, ʏᴀ ᴘʜᴏᴛᴏ ʙʜᴇᴊᴏ ʏᴀ ᴜsᴋᴀ ᴅɪʀᴇᴄᴛ URL.",
-        "sticker": "ᴡᴏ sᴛɪᴄᴋᴇʀ ʏᴀʜᴀɴ ʙʜᴇᴊᴏ ᴊᴏ sᴇᴛ ᴋᴀʀɴᴀ ʜᴀɪ.",
+        "sticker": "sᴛɪᴄᴋᴇʀ, ᴄᴜsᴛᴏᴍ ᴇᴍᴏᴊɪ ʏᴀ ɴᴏʀᴍᴀʟ ᴇᴍᴏᴊɪ (ᴊᴀɪsᴇ 🔥) ʙʜᴇᴊᴏ.",
     }.get(mtype, "ɴᴀʏᴀ ᴠᴀʟᴜᴇ ʙʜᴇᴊᴏ.")
     await query.answer()
     await app.send_message(
@@ -200,17 +214,32 @@ async def adm_capture_media(_, message: Message):
             value = message.video.file_id
         elif message.animation:
             value = message.animation.file_id
+        elif message.document and (message.document.mime_type or "").startswith("video/"):
+            # Telegram can deliver an uploaded MP4 as a document.
+            value = message.document.file_id
+        elif message.text and message.text.strip().startswith(("http://", "https://")):
+            # A direct media URL is valid for both photo and video slots.
+            value = message.text.strip()
     elif mtype == "sticker":
         if message.sticker:
             value = message.sticker.file_id
         elif message.text:
-            # Custom/premium emoji typed inline (not a sticker-pack sticker)
-            # arrives as a text message with a custom_emoji entity — pull its
-            # unique custom-emoji document id out of that entity instead.
+            # Premium/custom emoji arrives as a text message with a
+            # CUSTOM_EMOJI entity. Save its document id, not the visible
+            # Unicode fallback, so playback can render it with <emoji id>.
             for ent in (message.entities or []):
-                if getattr(ent, "custom_emoji_id", None):
-                    value = str(ent.custom_emoji_id)
+                custom_emoji_id = getattr(ent, "custom_emoji_id", None)
+                entity_type = getattr(ent, "type", None)
+                if custom_emoji_id and (
+                    str(entity_type).lower().endswith("custom_emoji")
+                    or entity_type is None
+                ):
+                    value = str(custom_emoji_id)
                     break
+            if not value and message.text.strip():
+                # Plain Unicode emoji cannot be sent with reply_sticker;
+                # prefix it so the playback helper renders it as text.
+                value = f"emoji:{message.text.strip()}"
     elif message.text and message.text.strip().startswith("http"):
         value = message.text.strip()
 

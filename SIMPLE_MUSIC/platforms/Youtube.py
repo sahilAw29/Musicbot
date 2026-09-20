@@ -1,6 +1,6 @@
 # -----------------------------------------------
-# 🔸 AALIYA MUSIC BOT Project
-# 🔹 Developed & Maintained by: Aaliya Music Bot ()
+# 🔸 YORU MUSIC BOT Project
+# 🔹 Developed & Maintained by: Yoru Music Bot ()
 # 📅 Copyright © 2026 – All Rights Reserved
 #
 # 📖 License:
@@ -9,7 +9,7 @@
 # Commercial use, redistribution, or removal of this notice is strictly prohibited
 # without prior written permission from the author.
 #
-# ❤️ Made with dedication and love by Aaliya Music Bot
+# ❤️ Made with dedication and love by Yoru Music Bot
 # -----------------------------------------------
 
 import asyncio
@@ -26,11 +26,9 @@ from pyrogram.types import Message
 from py_yt import Playlist
 
 from SIMPLE_MUSIC import LOGGER
+from SIMPLE_MUSIC.utils.cookies import fetch_cookie_file
 from SIMPLE_MUSIC.utils.formatters import time_to_seconds
-from SIMPLE_MUSIC.core.mongo import mongodb
 
-gameoverdb = mongodb.gameover_cache
-GAMEOVER_PERSIST_TTL_SECONDS = 6 * 60 * 60  # 6 hours; re-resolved automatically after this
 VIDEO_ID_RE = re.compile(r"(?:v=|vi=|youtu\.be/|shorts/|embed/)([A-Za-z0-9_-]{11})")
 
 
@@ -40,32 +38,12 @@ def _extract_video_id(link: str):
     return match.group(1) if match else None
 
 
-async def get_persisted_gameover(vidid: str):
-    try:
-        doc = await gameoverdb.find_one({"vidid": vidid})
-        if not doc:
-            return None
-        if time.time() - doc.get("saved_at", 0) > GAMEOVER_PERSIST_TTL_SECONDS:
-            return None
-        return doc.get("data")
-    except Exception:
-        return None
 
-
-async def save_persisted_gameover(vidid: str, data: dict):
-    try:
-        await gameoverdb.update_one(
-            {"vidid": vidid},
-            {"$set": {"vidid": vidid, "data": data, "saved_at": time.time()}},
-            upsert=True,
-        )
-    except Exception:
-        pass
-
-
+import config
 from config import (API_URL, VIDEO_API_URL, API_KEY, YT_API_KEY, YTPROXY_URL,
                     VDA_API_URL, VDA_API_KEY, VDA_AUDIO_QUALITY, VDA_VIDEO_FORMAT,
-                    YT_SEARCH_API_URL, VDA_KEYS_URL, GAMEOVER_API_URL, GAMEOVER_API_KEY)
+                    YT_SEARCH_API_URL, VDA_KEYS_URL, GAMEOVER_API_URL,
+                    GAMEOVER_API_KEY)
 
 DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
@@ -75,6 +53,8 @@ VDA_KEYS_CACHE = None
 SEARCH_CACHE = {}
 DETAILS_CACHE = {}
 VIDEO_INFO_CACHE = {}
+RELATED_CACHE = {}
+RELATED_CACHE_TTL_SECONDS = 600
 GAMEOVER_CACHE = {}
 CACHE_TTL_SECONDS = 120
 
@@ -100,6 +80,27 @@ async def _get_vda_keys():
         pass
     VDA_KEYS_CACHE = list(dict.fromkeys(keys))
     return VDA_KEYS_CACHE
+
+
+async def resolve_gameover(query: str):
+    """Resolve an audio search to a direct stream URL through GameOver."""
+    if not query or not GAMEOVER_API_URL or not GAMEOVER_API_KEY:
+        return None
+    try:
+        session = await get_session()
+        async with session.get(
+            GAMEOVER_API_URL,
+            params={"key": GAMEOVER_API_KEY, "search": query},
+            timeout=aiohttp.ClientTimeout(total=8, sock_connect=3, sock_read=6),
+        ) as response:
+            if response.status != 200:
+                return None
+            data = await response.json(content_type=None)
+        if isinstance(data, dict) and data.get("status") == "success" and data.get("stream_url"):
+            return data
+    except Exception:
+        pass
+    return None
 
 
 async def engine_vda(link: str, is_video: bool, path: str) -> str:
@@ -155,58 +156,6 @@ async def engine_vda(link: str, is_video: bool, path: str) -> str:
     return None
 
 
-_TITLE_NOISE_RE = re.compile(
-    r"\(.*?\)|\[.*?\]|\{.*?\}|official\s*(video|audio|music\s*video)?|lyrics?\s*(video)?|"
-    r"full\s*(video|song|audio)|hd|4k|new\s*song|latest\s*song|video\s*song",
-    re.IGNORECASE,
-)
-
-
-def _clean_query_for_gameover(title: str) -> str:
-    """Strip common noise (Official Video, [Lyrics], HD, etc.) so the search API gets a cleaner query."""
-    if not title:
-        return title
-    cleaned = _TITLE_NOISE_RE.sub("", title)
-    cleaned = re.sub(r"\s+", " ", cleaned).strip(" -|")
-    return cleaned or title
-
-
-async def resolve_gameover(query: str):
-    """Cookie-less direct resolve: search text in, direct stream_url out. No file download needed."""
-    if not query:
-        return None
-    try:
-        session = await get_session()
-        async with session.get(
-            GAMEOVER_API_URL,
-            params={"key": GAMEOVER_API_KEY, "search": query},
-            timeout=aiohttp.ClientTimeout(total=10, sock_connect=4, sock_read=6),
-        ) as response:
-            if response.status != 200:
-                return None
-            data = await response.json(content_type=None)
-        if isinstance(data, dict) and data.get("status") == "success" and data.get("stream_url"):
-            return data
-    except Exception:
-        pass
-    return None
-
-
-async def _prefetch_gameover(vidid: str, title: str):
-    """Fired in the background right after search, so download() finds it already cached = instant play."""
-    try:
-        persisted = await get_persisted_gameover(vidid)
-        if persisted and persisted.get("stream_url"):
-            GAMEOVER_CACHE[vidid] = (time.monotonic(), persisted)
-            return
-        resolved = await resolve_gameover(_clean_query_for_gameover(title))
-        if resolved and resolved.get("stream_url"):
-            GAMEOVER_CACHE[vidid] = (time.monotonic(), resolved)
-            await save_persisted_gameover(vidid, resolved)
-    except Exception:
-        pass
-
-
 async def search_youtube_api(query: str):
     """Search YouTube through the public JSON API, with a short in-process cache."""
     cache_key = " ".join(str(query).split()).lower()
@@ -214,6 +163,38 @@ async def search_youtube_api(query: str):
     cached = SEARCH_CACHE.get(cache_key)
     if cached and now - cached[0] < CACHE_TTL_SECONDS:
         return cached[1]
+    try:
+        session = await get_session()
+        async with session.get(
+            f"{config.MEDIA_API_BASE_URL}/search",
+            params={"query": query},
+            timeout=aiohttp.ClientTimeout(total=12, sock_connect=4, sock_read=8),
+        ) as response:
+            if response.status == 200:
+                payload = await response.json(content_type=None)
+                raw_results = payload.get("results", []) if isinstance(payload, dict) else []
+                if not raw_results and isinstance(payload, dict) and payload.get("id"):
+                    raw_results = [payload]
+                results = []
+                for item in raw_results:
+                    vid = item.get("id")
+                    if not vid:
+                        continue
+                    duration_text = item.get("duration") or "00:00"
+                    results.append({
+                        "videoId": vid,
+                        "title": item.get("title") or "Unknown",
+                        "durationText": duration_text,
+                        "durationSeconds": int(item.get("duration_sec") or time_to_seconds(duration_text)),
+                        "thumbnail": item.get("thumbnail") or item.get("thumbnail_remote"),
+                        "watchUrl": item.get("youtube_url") or f"https://www.youtube.com/watch?v={vid}",
+                        "uploader": item.get("uploader"),
+                    })
+                if results:
+                    SEARCH_CACHE[cache_key] = (now, results)
+                    return results
+    except Exception:
+        pass
     try:
         session = await get_session()
         async with session.get(
@@ -236,6 +217,29 @@ async def get_session():
     if CLIENT_SESSION is None or CLIENT_SESSION.closed:
         CLIENT_SESSION = aiohttp.ClientSession(connector=aiohttp.TCPConnector(limit=0))
     return CLIENT_SESSION
+
+
+async def engine_media_api(link: str, is_video: bool, path: str) -> str:
+    """Download audio/video through the supplied media API stream URL."""
+    try:
+        session = await get_session()
+        params = {"type": "video" if is_video else "audio", "url": link}
+        if is_video:
+            params["quality"] = config.MEDIA_API_VIDEO_QUALITY
+        async with session.get(
+            f"{config.MEDIA_API_BASE_URL}/download",
+            params=params,
+            timeout=aiohttp.ClientTimeout(total=25, sock_connect=5, sock_read=20),
+        ) as response:
+            if response.status != 200:
+                return None
+            payload = await response.json(content_type=None)
+        stream_url = payload.get("stream_url") if isinstance(payload, dict) else None
+        if stream_url:
+            return await _download_stream(stream_url, path)
+    except Exception:
+        pass
+    return None
 
 def _result_thumbnail(result, video_id):
     """Return the thumbnail belonging to the same API result/video ID."""
@@ -352,6 +356,14 @@ async def _core_download(link: str, is_video: bool) -> str:
     if os.path.exists(final_path) and os.path.getsize(final_path) > 1024:
         return final_path
 
+    media_path = await engine_media_api(link, is_video, f"{final_path}_media_api")
+    if media_path and os.path.exists(media_path):
+        try:
+            os.rename(media_path, final_path)
+            return final_path
+        except OSError:
+            return media_path
+
     vda_path = await engine_vda(link, is_video, f"{final_path}_vda")
     if vda_path and os.path.exists(vda_path):
         try:
@@ -360,7 +372,8 @@ async def _core_download(link: str, is_video: bool) -> str:
         except OSError:
             return vda_path
 
-    # Keep the existing API engines as fallbacks; no YouTube cookies are used.
+    # Keep the existing API engines as fallbacks. The final yt-dlp fallback
+    # below also uses the configured cookie source when available.
     tasks = [
         asyncio.create_task(engine_shuvo(link, is_video, f"{final_path}_shuvo")),
         asyncio.create_task(engine_shrutibots(vid_id, is_video, f"{final_path}_shruti")),
@@ -387,6 +400,7 @@ async def _core_download(link: str, is_video: bool) -> str:
 
     loop = asyncio.get_running_loop()
     def fallback_ytdl():
+        cookie_path = asyncio.run(fetch_cookie_file())
         opts = {
             "format": "best[height<=480]/best" if is_video else "bestaudio/best",
             "outtmpl": final_path,
@@ -395,6 +409,8 @@ async def _core_download(link: str, is_video: bool) -> str:
             "no_warnings": True,
             "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
         }
+        if cookie_path:
+            opts["cookiefile"] = cookie_path
         yt_dlp.YoutubeDL(opts).download([link])
 
     try:
@@ -463,6 +479,59 @@ async def get_exact_video_info(video_id: str):
             VIDEO_INFO_CACHE[video_id] = (time.monotonic(), result)
             return result
     return None
+
+
+async def get_related_videos(video_id: str, limit: int = 10):
+    """
+    Real 'up next' songs for a video — pulled from YouTube's own auto-generated
+    Mix/Radio playlist (the same list YouTube itself uses for autoplay), not a
+    generic title search (which mostly just returns re-uploads/covers of the
+    same track). Returns a list of {"videoId", "title"} dicts, freshest first.
+    """
+    video_id = str(video_id or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9_-]{6,}", video_id):
+        return []
+
+    cached = RELATED_CACHE.get(video_id)
+    now = time.monotonic()
+    if cached and now - cached[0] < RELATED_CACHE_TTL_SECONDS:
+        return cached[1]
+
+    mix_url = f"https://www.youtube.com/watch?v={video_id}&list=RD{video_id}"
+    loop = asyncio.get_running_loop()
+
+    def extract_mix():
+        options = {
+            "quiet": True,
+            "no_warnings": True,
+            "skip_download": True,
+            "extract_flat": True,
+            "noplaylist": False,
+            "playlistend": limit + 1,
+            "nocheckcertificate": True,
+            "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
+        }
+        with yt_dlp.YoutubeDL(options) as ydl:
+            return ydl.extract_info(mix_url, download=False)
+
+    try:
+        data = await loop.run_in_executor(None, extract_mix)
+    except Exception:
+        data = None
+
+    entries = []
+    if data and data.get("entries"):
+        for entry in data["entries"]:
+            if not entry:
+                continue
+            vid = entry.get("id")
+            if not vid or vid == video_id:
+                continue  # skip the seed song itself
+            entries.append({"videoId": vid, "title": entry.get("title") or "Unknown"})
+
+    RELATED_CACHE[video_id] = (now, entries)
+    return entries
+
 
 
 class YouTubeAPI:
@@ -538,6 +607,21 @@ class YouTubeAPI:
         if videoid: link = self.listbase + link
         if "&" in link: link = link.split("&")[0]
         try:
+            session = await get_session()
+            async with session.get(
+                f"{config.MEDIA_API_BASE_URL}/playlist",
+                params={"url": link},
+                timeout=aiohttp.ClientTimeout(total=20, sock_connect=5, sock_read=15),
+            ) as response:
+                if response.status == 200:
+                    payload = await response.json(content_type=None)
+                    items = payload.get("items", []) if isinstance(payload, dict) else []
+                    ids = [item.get("id") for item in items if item.get("id")]
+                    if ids:
+                        return ids[:limit]
+        except Exception:
+            pass
+        try:
             videos = (await Playlist.get(link)).get("videos") or []
             return [data["id"] for data in videos[:limit] if data and data.get("id")]
         except: return []
@@ -579,8 +663,6 @@ class YouTubeAPI:
             "watchUrl": result.get("watchUrl") or f"https://www.youtube.com/watch?v={vidid}",
         }
         VIDEO_INFO_CACHE[vidid] = (time.monotonic(), cached_info)
-        # Pre-resolve the cookie-less GameOver stream in the background so download() is instant later.
-        asyncio.create_task(_prefetch_gameover(vidid, cached_info["title"]))
         return {
             "title": cached_info["title"],
             "link": cached_info["watchUrl"],
@@ -592,11 +674,14 @@ class YouTubeAPI:
     async def formats(self, link: str, videoid: Union[bool, str] = None):
         if videoid: link = self.base + link
         if "&" in link: link = link.split("&")[0]
+        cookie_path = await fetch_cookie_file()
         base_fmt_opts = {
             "quiet": True,
             "no_warnings": True,
             "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
         }
+        if cookie_path:
+            base_fmt_opts["cookiefile"] = cookie_path
         try:
             with yt_dlp.YoutubeDL(base_fmt_opts) as ydl:
                 info = ydl.extract_info(link, download=False)
@@ -625,19 +710,6 @@ class YouTubeAPI:
         is_video = bool(video)
         vid_id = link.split('v=')[-1].split('&')[0] if 'v=' in link else link.split("/")[-1].split("?")[0]
 
-        # GameOver direct API — check the background-prefetched cache first (instant, no extra round-trip).
-        if not is_video:
-            cached = GAMEOVER_CACHE.get(vid_id)
-            if cached and time.monotonic() - cached[0] < CACHE_TTL_SECONDS:
-                stream_url = cached[1].get("stream_url")
-                if stream_url:
-                    return stream_url, False
-            # In-memory cache expired/missing — check the persistent (mongodb) cache before calling the API again.
-            persisted = await get_persisted_gameover(vid_id)
-            if persisted and persisted.get("stream_url"):
-                GAMEOVER_CACHE[vid_id] = (time.monotonic(), persisted)
-                return persisted["stream_url"], False
-
         title_text = None
         duration_sec = 0
         is_live = False
@@ -646,21 +718,17 @@ class YouTubeAPI:
         except:
             is_live = True
 
-        # GameOver direct API — search-based resolve straight to a playable
-        # stream_url. This is the primary audio path and avoids cookies.
+        # GameOver direct audio resolver: return the stream URL immediately
+        # when available, while the bounded request safely falls through to
+        # the existing download engines if the service is unavailable.
         if not is_video:
-            try:
-                is_direct_url = bool(re.search(self.regex, link))
-                resolved = await resolve_gameover(link) if is_direct_url else None
-                if not resolved or not resolved.get("stream_url"):
-                    query = _clean_query_for_gameover(title_text) or vid_id
-                    resolved = await resolve_gameover(query)
-                if resolved and resolved.get("stream_url"):
-                    GAMEOVER_CACHE[vid_id] = (time.monotonic(), resolved)
-                    await save_persisted_gameover(vid_id, resolved)
-                    return resolved["stream_url"], False
-            except Exception:
-                pass
+            cached = GAMEOVER_CACHE.get(vid_id)
+            if cached and time.monotonic() - cached[0] < CACHE_TTL_SECONDS:
+                return cached[1], False
+            resolved = await resolve_gameover(title_text or vid_id)
+            if resolved and resolved.get("stream_url"):
+                GAMEOVER_CACHE[vid_id] = (time.monotonic(), resolved["stream_url"])
+                return resolved["stream_url"], False
 
         # <emoji id='5258203794772085854'>⚡</emoji> 1 HOUR LIMIT BYPASS (>3600 sec)
         if is_live or duration_sec == 0 or duration_sec > 3600:
@@ -675,6 +743,7 @@ class YouTubeAPI:
             except: pass
             
             loop = asyncio.get_running_loop()
+            cookie_path = await fetch_cookie_file()
             def extract_direct_url():
                 format_str = "best[height<=480]/best" if is_video else "bestaudio/best"
                 base_opts = {
@@ -682,6 +751,9 @@ class YouTubeAPI:
                     "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
                     "format": format_str,
                 }
+                if cookie_path:
+                    base_opts["cookiefile"] = cookie_path
+                # Cookie-backed yt-dlp extraction
                 # VPS pe bina cookies android client kaam karta hai
                 try:
                     with yt_dlp.YoutubeDL(base_opts) as ydl:

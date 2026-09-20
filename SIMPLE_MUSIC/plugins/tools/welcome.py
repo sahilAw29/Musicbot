@@ -134,6 +134,14 @@ async def _message_content(message: Message):
             "caption": message.caption or "",
         }
     if message.document:
+        # Telegram may deliver an MP4 as a document when it is uploaded with
+        # file mode enabled. Treat video documents as videos for welcome sends.
+        if (message.document.mime_type or "").startswith("video/"):
+            return {
+                "type": "video",
+                "file_id": message.document.file_id,
+                "caption": message.caption or "",
+            }
         return {
             "type": "document",
             "file_id": message.document.file_id,

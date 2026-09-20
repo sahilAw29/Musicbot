@@ -215,21 +215,12 @@ async def start_gp(client, message: Message, _):
         pass
     out = start_panel(_)
     uptime = int(time.time() - _boot_)
-    _start_url = config.START_IMG_URL or ""
-    if _start_url.lower().endswith((".mp4", ".gif", ".webm")):
-        await client.send_animation(
-            chat_id=message.chat.id,
-            animation=_start_url,
-            caption=_["start_1"].format(app.mention, get_readable_time(uptime)),
-            reply_markup=InlineKeyboardMarkup(out),
-        )
-    else:
-        await client.send_photo(
-            chat_id=message.chat.id,
-            photo=_start_url,
-            caption=_["start_1"].format(app.mention, get_readable_time(uptime)),
-            reply_markup=InlineKeyboardMarkup(out),
-        )
+    await client.send_photo(
+        chat_id=message.chat.id,
+        photo=config.START_IMG_URL,
+        caption=_["start_1"].format(app.mention, get_readable_time(uptime)),
+        reply_markup=InlineKeyboardMarkup(out),
+    )
     return asyncio.create_task(add_served_chat(message.chat.id))
 
 

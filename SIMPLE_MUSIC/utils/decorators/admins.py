@@ -21,6 +21,7 @@ from SIMPLE_MUSIC.utils.database import (
     get_lang,
     get_upvote_count,
     is_active_chat,
+    is_music_playing,
     is_maintenance,
     is_nonadmin_chat,
     is_skipmode,
@@ -71,7 +72,10 @@ def AdminRightsCheck(mystic):
                 return await message.reply_text(_["cplay_4"])
         else:
             chat_id = message.chat.id
-        if not await is_active_chat(chat_id):
+        # Autoplay/manual transitions can briefly refresh the active-chat list
+        # after the stream itself is already playing. Trust the playback flag
+        # or an existing queue as a safe fallback for skip/next controls.
+        if not await is_active_chat(chat_id) and not await is_music_playing(chat_id) and not db.get(chat_id):
             return await message.reply_text(_["general_5"])
         is_non_admin = await is_nonadmin_chat(message.chat.id)
         if not is_non_admin:

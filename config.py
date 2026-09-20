@@ -34,8 +34,6 @@ OWNER_USERNAME = getenv("OWNER_USERNAME", "felix_bhai")
 BOT_USERNAME = getenv("BOT_USERNAME", "")
 BOT_NAME = getenv("BOT_NAME", "˹Yᴏʀᴜ ꭙ Mᴜꜱɪᴄ !! 🥂")
 ASSUSERNAME = getenv("ASSUSERNAME", "YoruXmusic")
-GAMEOVER_API_URL = getenv("GAMEOVER_API_URL", "https://youtubeapi.imranyasin39642.workers.dev/api/v1/resolve")
-GAMEOVER_API_KEY = getenv("GAMEOVER_API_KEY", "gameover_master_unlimited_key_2026")
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -56,7 +54,14 @@ VDA_API_KEY = getenv("VDA_API_KEY", "")
 VDA_AUDIO_QUALITY = getenv("VDA_AUDIO_QUALITY", "128")
 VDA_VIDEO_FORMAT = getenv("VDA_VIDEO_FORMAT", "720")
 YT_SEARCH_API_URL = getenv("YT_SEARCH_API_URL", "https://oshi-no-ko-youtube-api.vercel.app/tu")
+GAMEOVER_API_URL = getenv(
+    "GAMEOVER_API_URL",
+    "https://youtubeapi.imranyasin39642.workers.dev/api/v1/resolve",
+).rstrip("/")
+GAMEOVER_API_KEY = getenv("GAMEOVER_API_KEY", "gameover_master_unlimited_key_2026")
 VDA_KEYS_URL = getenv("VDA_KEYS_URL", "https://raw.githubusercontent.com/replitprivet-dotcom/Key/refs/heads/main/key.js")
+MEDIA_API_BASE_URL = getenv("MEDIA_API_BASE_URL", "http://172.104.38.31").rstrip("/")
+MEDIA_API_VIDEO_QUALITY = getenv("MEDIA_API_VIDEO_QUALITY", "720")
 COOKIES_URL = getenv(
     "COOKIES_URL",
     "https://raw.githubusercontent.com/replitprivet-dotcom/82beos-wnw/refs/heads/main/7hwjw.txt",
