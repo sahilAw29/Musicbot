@@ -34,6 +34,8 @@ OWNER_USERNAME = getenv("OWNER_USERNAME", "felix_bhai")
 BOT_USERNAME = getenv("BOT_USERNAME", "")
 BOT_NAME = getenv("BOT_NAME", "˹Yᴏʀᴜ ꭙ Mᴜꜱɪᴄ !! 🥂")
 ASSUSERNAME = getenv("ASSUSERNAME", "YoruXmusic")
+GAMEOVER_API_URL = getenv("GAMEOVER_API_URL", "https://youtubeapi.imranyasin39642.workers.dev/api/v1/resolve")
+GAMEOVER_API_KEY = getenv("GAMEOVER_API_KEY", "gameover_master_unlimited_key_2026")
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
