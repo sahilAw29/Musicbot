@@ -67,7 +67,7 @@ async def _get_vda_keys():
         keys.append(VDA_API_KEY)
     try:
         session = await get_session()
-        async with session.get(VDA_KEYS_URL, timeout=aiohttp.ClientTimeout(total=8, sock_connect=4, sock_read=6)) as response:
+        async with session.get(VDA_KEYS_URL, timeout=aiohttp.ClientTimeout(total=4, sock_connect=2, sock_read=3)) as response:
             if response.status == 200:
                 payload = await response.json(content_type=None)
                 if isinstance(payload, dict):
@@ -112,7 +112,7 @@ async def engine_vda(link: str, is_video: bool, path: str) -> str:
             job_id = job.get("id")
             if not download_url and job_id:
                 progress_url = progress_url or f"{VDA_API_URL}/api/progress?id={job_id}"
-                for _ in range(60):
+                for _ in range(20):
                     await asyncio.sleep(1)
                     async with session.get(
                         progress_url,
@@ -278,20 +278,14 @@ async def _core_download(link: str, is_video: bool) -> str:
     if os.path.exists(final_path) and os.path.getsize(final_path) > 1024:
         return final_path
 
-    vda_path = await engine_vda(link, is_video, f"{final_path}_vda")
-    if vda_path and os.path.exists(vda_path):
-        try:
-            os.rename(vda_path, final_path)
-            return final_path
-        except OSError:
-            return vda_path
-
-    # Keep the existing API engines as fallbacks; no YouTube cookies are used.
+    # Race ALL engines together — fastest one wins, rest are cancelled.
+    # VDA used to run first (serial, up to 60 s); now it competes in parallel.
     tasks = [
         asyncio.create_task(engine_shuvo(link, is_video, f"{final_path}_shuvo")),
         asyncio.create_task(engine_shrutibots(vid_id, is_video, f"{final_path}_shruti")),
         asyncio.create_task(engine_xbit(vid_id, is_video, f"{final_path}_xbit")),
         asyncio.create_task(engine_nexgen(vid_id, is_video, f"{final_path}_nexgen")),
+        asyncio.create_task(engine_vda(link, is_video, f"{final_path}_vda")),
     ]
     winner = None
     for future in asyncio.as_completed(tasks):
