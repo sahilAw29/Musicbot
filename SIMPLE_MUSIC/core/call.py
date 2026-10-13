@@ -32,7 +32,6 @@ from SIMPLE_MUSIC.utils.database import (
     get_lang,
     get_loop,
     group_assistant,
-    is_autoend,
     is_autoplay,
     music_on,
     remove_active_chat,
@@ -323,7 +322,16 @@ class Call(PyTgCalls):
 
     async def seek_stream(self, chat_id, file_path, to_seek, duration, mode):
         assistant = await group_assistant(self, chat_id)
-        ffmpeg = f"-ss {to_seek} -to {duration}"
+        # Direct movie API URLs often have no duration metadata. Seek from the
+        # requested offset without an artificial 00:00 end boundary.
+        duration_text = str(duration).strip()
+        # Mplay displays the selected quality/format (for example 720p mp4)
+        # in the card, but that is not a media duration. Treat it like an
+        # unknown-duration HTTP stream so ffmpeg seeks from the requested
+        # offset without an invalid -to boundary.
+        quality_label = bool(re.fullmatch(r"\d{3,4}p\s+[A-Za-z0-9._-]+", duration_text))
+        unknown_duration = duration_text in {"00:00", "0", "0:00", "ᴜʀʟ sᴛʀᴇᴀᴍ", "Unknown"} or quality_label
+        ffmpeg = f"-ss {to_seek}" if unknown_duration else f"-ss {to_seek} -to {duration}"
         video_mode = mode == "video"
         stream = self._build_stream(
             file_path,
@@ -368,11 +376,15 @@ class Call(PyTgCalls):
         await music_on(chat_id)
         if video:
             await add_active_video_chat(chat_id)
-        if await is_autoend():
-            counter[chat_id] = {}
+        # Always schedule empty-VC cleanup, even when autoplay is enabled.
+        # The monitor cancels this timer if a listener returns.
+        counter[chat_id] = {}
+        try:
             users = len(await assistant.get_participants(chat_id))
-            if users == 1:
-                autoend[chat_id] = datetime.now() + timedelta(minutes=1)
+        except Exception:
+            users = 2  # avoid a false leave if Telegram participant lookup fails
+        if users <= 1:
+            autoend[chat_id] = datetime.now() + timedelta(minutes=1)
 
     _autoplay_history: dict = {}
     _autoplay_reserved: dict = {}  # chat_id -> True once the next song is already queued ahead of time
@@ -732,11 +744,21 @@ class Call(PyTgCalls):
                     text=_["call_6"],
                 )
             button = await stream_markup(_, chat_id)
+            queue_image = check[0].get("image") or config.STREAM_IMG_URL
+            is_api_video = title != "ɪɴᴅᴇx ᴏʀ ᴍ3ᴜ8 ʟɪɴᴋ"
             run = await app.send_photo(
                 has_spoiler=True,
                 chat_id=original_chat_id,
-                photo=config.STREAM_IMG_URL,
-                caption=_["stream_2"].format(user),
+                photo=queue_image,
+                caption=(
+                    _["stream_1"].format(
+                        "https://movie-downloader-api.vercel.app",
+                        title[:45],
+                        check[0].get("dur") or "API Video",
+                        user,
+                    )
+                    if is_api_video else _["stream_2"].format(user)
+                ),
                 reply_markup=InlineKeyboardMarkup(button),
             )
             db[chat_id][0]["mystic"] = run

@@ -92,6 +92,18 @@ async def send_welcome_animation(message: Message):
     except Exception:
         pass
 
+
+async def send_start_media(client, chat_id, media, caption, reply_markup=None):
+    """Send START_IMG_URL whether it is a photo, video, or animation file-id."""
+    kwargs = {"chat_id": chat_id, "caption": caption, "reply_markup": reply_markup}
+    for sender, field in ((client.send_photo, "photo"), (client.send_video, "video"), (client.send_animation, "animation")):
+        try:
+            return await sender(**{field: media}, **kwargs)
+        except Exception:
+            continue
+    return await client.send_message(chat_id, caption, reply_markup=reply_markup)
+
+
 async def send_logs_bg(message, text_type="started"):
     if await is_on_off(2):
         try:
@@ -118,11 +130,9 @@ async def start_pm(client, message: Message):
 
         if name.startswith("help"):
             keyboard = help_pannel_page1(_)
-            await client.send_photo(
-                chat_id=message.chat.id,
-                photo=config.START_IMG_URL,
-                caption=_['help_1'].format(config.SUPPORT_CHAT),
-                reply_markup=keyboard,
+            await send_start_media(
+                client, message.chat.id, config.START_IMG_URL,
+                _['help_1'].format(config.SUPPORT_CHAT), keyboard,
             )
         elif name.startswith("sud"):
             await sudoers_list(client=client, message=message, _=_)
@@ -183,11 +193,10 @@ async def start_pm(client, message: Message):
         await send_welcome_animation(message)
 
         out = private_panel(_)
-        await client.send_photo(
-            chat_id=message.chat.id,
-            photo=config.START_IMG_URL,
-            caption=_["start_2"].format(message.from_user.mention, app.mention, "Mina 0.5s", "0.2 GB", "1.2%", "14%", "<emoji id='5258203794772085854'>⚡</emoji> Fast", "<emoji id='6086954744268460848'>🔥</emoji> Active", app.username),
-            reply_markup=InlineKeyboardMarkup(out),
+        await send_start_media(
+            client, message.chat.id, config.START_IMG_URL,
+            _['start_2'].format(message.from_user.mention, app.mention, "Mina 0.5s", "0.2 GB", "1.2%", "14%", "<emoji id='5258203794772085854'>⚡</emoji> Fast", "<emoji id='6086954744268460848'>🔥</emoji> Active", app.username),
+            InlineKeyboardMarkup(out),
         )
         asyncio.create_task(send_logs_bg(message, "started"))
 
@@ -215,11 +224,10 @@ async def start_gp(client, message: Message, _):
         pass
     out = start_panel(_)
     uptime = int(time.time() - _boot_)
-    await client.send_photo(
-        chat_id=message.chat.id,
-        photo=config.START_IMG_URL,
-        caption=_["start_1"].format(app.mention, get_readable_time(uptime)),
-        reply_markup=InlineKeyboardMarkup(out),
+    await send_start_media(
+        client, message.chat.id, config.START_IMG_URL,
+        _['start_1'].format(app.mention, get_readable_time(uptime)),
+        InlineKeyboardMarkup(out),
     )
     return asyncio.create_task(add_served_chat(message.chat.id))
 
@@ -251,11 +259,9 @@ async def welcome(client, message: Message):
 
                 out = start_panel(_)
                 welcome_text = f"🩷 Wᴇʟᴄᴏᴍᴇ Bᴀʙʏ ꨄ {message.from_user.mention} 🥳"
-                await client.send_photo(
-                    chat_id=message.chat.id,
-                    photo=config.START_IMG_URL,
-                    caption=welcome_text,
-                    reply_markup=InlineKeyboardMarkup(out),
+                await send_start_media(
+                    client, message.chat.id, config.START_IMG_URL,
+                    welcome_text, InlineKeyboardMarkup(out),
                 )
                 asyncio.create_task(add_served_chat(message.chat.id))
                 await message.stop_propagation()

@@ -10,6 +10,7 @@ from pyrogram.types import Message
 
 import config
 from SIMPLE_MUSIC import app
+from SIMPLE_MUSIC.plugins.extra.waifu_catch import try_handle_spawn_reply
 from SIMPLE_MUSIC.utils.Simple_font import Fonts
 
 AI_ENDPOINT = "https://r-bots-free-apis.co08.art/api/gptlogic"
@@ -152,7 +153,11 @@ async def yoru_ai(_, message: Message):
     return await _reply_yoru(message, question)
 
 
-@app.on_message(filters.reply & ~filters.command(["ask", "chatgpt", "yoru"]), group=6)
+@app.on_message(
+    filters.reply
+    & ~filters.command(["ask", "chatgpt", "yoru", "guess", "grab", "catch", "collect"]),
+    group=6,
+)
 async def yoru_reply_chat(_, message: Message):
     """Chat automatically when a user replies to this bot's message."""
     replied = message.reply_to_message
@@ -160,6 +165,8 @@ async def yoru_reply_chat(_, message: Message):
         return
     me = await app.get_me()
     if replied.from_user.id != me.id:
+        return
+    if await try_handle_spawn_reply(message):
         return
     if message.sticker:
         return await _reply_random_pack_sticker(message)

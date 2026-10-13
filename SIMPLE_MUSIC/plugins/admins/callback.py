@@ -1,4 +1,5 @@
 # -----------------------------------------------
+import re
 # 🔸 YORU MUSIC BOT Project
 # 🔹 Developed & Maintained by: Yoru Music Bot ()
 # 📅 Copyright © 2026 – All Rights Reserved
@@ -205,16 +206,22 @@ async def del_back_playlist(client, CallbackQuery, _):
         if not playing:
             return await CallbackQuery.answer(_["queue_2"], show_alert=True)
         duration_seconds = int(playing[0]["seconds"])
-        if duration_seconds == 0:
-            return await CallbackQuery.answer(_["admin_22"], show_alert=True)
         file_path = playing[0]["file"]
         duration_played = int(playing[0]["played"])
         duration = playing[0]["dur"]
+        duration_text = str(duration).strip()
+        unknown_http_video = (
+            "index_" in file_path
+            or duration_text in {"00:00", "0", "0:00", "ᴜʀʟ sᴛʀᴇᴀᴍ", "Unknown"}
+            or bool(re.fullmatch(r"\d{3,4}p\s+[A-Za-z0-9._-]+", duration_text))
+        )
+        if duration_seconds == 0 and not unknown_http_video:
+            return await CallbackQuery.answer(_["admin_22"], show_alert=True)
         step = 10
         if command == "Back10":
             to_seek = max(0, duration_played - step)
         else:
-            to_seek = min(duration_seconds, duration_played + step)
+            to_seek = duration_played + step if unknown_http_video else min(duration_seconds, duration_played + step)
         if to_seek == duration_played:
             return await CallbackQuery.answer(
                 _["admin_23"].format(seconds_to_min(duration_played), duration),

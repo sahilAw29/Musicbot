@@ -91,7 +91,8 @@ async def resolve_gameover(query: str):
         async with session.get(
             GAMEOVER_API_URL,
             params={"key": GAMEOVER_API_KEY, "search": query},
-            timeout=aiohttp.ClientTimeout(total=8, sock_connect=3, sock_read=6),
+            headers={"Accept": "application/json", "User-Agent": "YoruMusicBot/1.0"},
+            timeout=aiohttp.ClientTimeout(total=12, sock_connect=4, sock_read=8),
         ) as response:
             if response.status != 200:
                 return None
@@ -157,51 +158,49 @@ async def engine_vda(link: str, is_video: bool, path: str) -> str:
 
 
 async def search_youtube_api(query: str):
-    """Search YouTube through the public JSON API, with a short in-process cache."""
+    """Resolve music through GameOver and retain its direct stream URL."""
     cache_key = " ".join(str(query).split()).lower()
     now = time.monotonic()
     cached = SEARCH_CACHE.get(cache_key)
     if cached and now - cached[0] < CACHE_TTL_SECONDS:
         return cached[1]
     try:
-        session = await get_session()
-        async with session.get(
-            f"{config.MEDIA_API_BASE_URL}/search",
-            params={"query": query},
-            timeout=aiohttp.ClientTimeout(total=12, sock_connect=4, sock_read=8),
-        ) as response:
-            if response.status == 200:
-                payload = await response.json(content_type=None)
-                raw_results = payload.get("results", []) if isinstance(payload, dict) else []
-                if not raw_results and isinstance(payload, dict) and payload.get("id"):
-                    raw_results = [payload]
-                results = []
-                for item in raw_results:
-                    vid = item.get("id")
-                    if not vid:
-                        continue
-                    duration_text = item.get("duration") or "00:00"
-                    results.append({
-                        "videoId": vid,
-                        "title": item.get("title") or "Unknown",
-                        "durationText": duration_text,
-                        "durationSeconds": int(item.get("duration_sec") or time_to_seconds(duration_text)),
-                        "thumbnail": item.get("thumbnail") or item.get("thumbnail_remote"),
-                        "watchUrl": item.get("youtube_url") or f"https://www.youtube.com/watch?v={vid}",
-                        "uploader": item.get("uploader"),
-                    })
-                if results:
-                    SEARCH_CACHE[cache_key] = (now, results)
-                    return results
+        resolved = await resolve_gameover(query)
+        if resolved and resolved.get("stream_url"):
+            # Synthetic ID keeps the existing queue compatible while ensuring
+            # download() retrieves this exact resolver stream from cache.
+            resolver_id = str(resolved.get("track_id") or resolved.get("video_id") or cache_key)
+            source_video_id = str(resolved.get("video_id") or "").strip()
+            vid = f"gameover:{resolver_id}"
+            title = str(resolved.get("title") or query)
+            artist = str(resolved.get("artist") or "")
+            duration_text = str(resolved.get("duration") or "00:00")
+            # The API exposes the original YouTube video_id instead of an
+            # image field. Build the exact matching thumbnail from that ID.
+            thumbnail = (
+                f"https://i.ytimg.com/vi/{source_video_id}/hqdefault.jpg"
+                if len(source_video_id) == 11 else None
+            )
+            result = {
+                "videoId": vid,
+                "title": f"{title} — {artist}" if artist else title,
+                "durationText": duration_text,
+                "durationSeconds": int(resolved.get("duration_sec") or time_to_seconds(duration_text)),
+                "thumbnail": thumbnail,
+                "watchUrl": f"https://www.youtube.com/watch?v={source_video_id}" if len(source_video_id) == 11 else None,
+                "uploader": artist,
+                "directStreamUrl": resolved["stream_url"],
+            }
+            GAMEOVER_CACHE[vid] = (now, resolved["stream_url"])
+            results = [result]
+            SEARCH_CACHE[cache_key] = (now, results)
+            return results
     except Exception:
         pass
+    # Compatibility fallback for queries unavailable in the resolver.
     try:
         session = await get_session()
-        async with session.get(
-            YT_SEARCH_API_URL,
-            params={"p": query},
-            timeout=aiohttp.ClientTimeout(total=10, sock_connect=4, sock_read=7),
-        ) as response:
+        async with session.get(YT_SEARCH_API_URL, params={"p": query}, timeout=aiohttp.ClientTimeout(total=10, sock_connect=4, sock_read=7)) as response:
             if response.status != 200:
                 return []
             payload = await response.json(content_type=None)
@@ -713,22 +712,21 @@ class YouTubeAPI:
         title_text = None
         duration_sec = 0
         is_live = False
+        # A resolver result is already a playable direct stream; use it before
+        # any legacy metadata/download API call.
+        if not is_video:
+            cached = GAMEOVER_CACHE.get(vid_id)
+            if cached and time.monotonic() - cached[0] < CACHE_TTL_SECONDS:
+                return cached[1], True
         try:
             title_text, _, duration_sec, _, _ = await self.details(link)
         except:
             is_live = True
-
-        # GameOver direct audio resolver: return the stream URL immediately
-        # when available, while the bounded request safely falls through to
-        # the existing download engines if the service is unavailable.
         if not is_video:
-            cached = GAMEOVER_CACHE.get(vid_id)
-            if cached and time.monotonic() - cached[0] < CACHE_TTL_SECONDS:
-                return cached[1], False
             resolved = await resolve_gameover(title_text or vid_id)
             if resolved and resolved.get("stream_url"):
                 GAMEOVER_CACHE[vid_id] = (time.monotonic(), resolved["stream_url"])
-                return resolved["stream_url"], False
+                return resolved["stream_url"], True
 
         # <emoji id='5258203794772085854'>⚡</emoji> 1 HOUR LIMIT BYPASS (>3600 sec)
         if is_live or duration_sec == 0 or duration_sec > 3600:

@@ -70,6 +70,7 @@ async def put_queue_index(
     vidid,
     stream,
     forceplay: Union[bool, str] = None,
+    image: Union[bool, str] = None,
 ):
     if "20.212.146.162" in vidid:
         try:
@@ -92,6 +93,7 @@ async def put_queue_index(
         "vidid": vidid,
         "seconds": dur,
         "played": 0,
+        "image": image,
     }
     if forceplay:
         check = db.get(chat_id)

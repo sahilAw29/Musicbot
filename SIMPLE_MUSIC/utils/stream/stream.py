@@ -50,6 +50,9 @@ async def stream(
     streamtype: Union[bool, str] = None,
     spotify: Union[bool, str] = None,
     forceplay: Union[bool, str] = None,
+    stream_title: str = None,
+    stream_duration: str = None,
+    stream_image: str = None,
 ):
     if not result:
         return
@@ -123,7 +126,11 @@ async def stream(
                     "video" if video else "audio",
                     forceplay=forceplay,
                 )
-                img = await get_thumb(vidid, title=title, duration=duration_min, thumbnail_url=thumbnail)
+                img = (
+                config.STREAM_IMG_URL
+                if str(vidid).startswith("gameover:")
+                else await get_thumb(vidid, title=title, duration=duration_min, thumbnail_url=thumbnail)
+            )
                 button = await stream_markup(_, chat_id)
                 run = await app.send_photo(
                     original_chat_id,
@@ -209,7 +216,11 @@ async def stream(
                 "video" if video else "audio",
                 forceplay=forceplay,
             )
-            img = await get_thumb(vidid, title=title, duration=duration_min, thumbnail_url=thumbnail)
+            img = (
+                config.STREAM_IMG_URL
+                if str(vidid).startswith("gameover:")
+                else await get_thumb(vidid, title=title, duration=duration_min, thumbnail_url=thumbnail)
+            )
             button = await stream_markup(_, chat_id)
             run = await app.send_photo(
                 original_chat_id,
@@ -390,7 +401,11 @@ async def stream(
                 "video" if video else "audio",
                 forceplay=forceplay,
             )
-            img = await get_thumb(vidid, title=title, duration=duration_min, thumbnail_url=thumbnail)
+            img = (
+                config.STREAM_IMG_URL
+                if str(vidid).startswith("gameover:")
+                else await get_thumb(vidid, title=title, duration=duration_min, thumbnail_url=thumbnail)
+            )
             button = await stream_markup(_, chat_id)
             run = await app.send_photo(
                 original_chat_id,
@@ -408,8 +423,8 @@ async def stream(
             db[chat_id][0]["markup"] = "tg"
     elif streamtype == "index":
         link = result
-        title = "ɪɴᴅᴇx ᴏʀ ᴍ3ᴜ8 ʟɪɴᴋ"
-        duration_min = "00:00"
+        title = stream_title or "ɪɴᴅᴇx ᴏʀ ᴍ3ᴜ8 ʟɪɴᴋ"
+        duration_min = stream_duration or "00:00"
         if await is_active_chat(chat_id):
             _evict_pending_autoplay(chat_id)
             await put_queue_index(
@@ -421,6 +436,7 @@ async def stream(
                 user_name,
                 link,
                 "video" if video else "audio",
+                image=stream_image,
             )
             position = len(db.get(chat_id)) - 1
             button = aq_markup(_, chat_id)
@@ -447,13 +463,22 @@ async def stream(
                 link,
                 "video" if video else "audio",
                 forceplay=forceplay,
+                image=stream_image,
             )
             button = await stream_markup(_, chat_id)
             run = await app.send_photo(
                 original_chat_id,
                 has_spoiler=True,
-                photo=config.STREAM_IMG_URL,
-                caption=_["stream_2"].format(user_name),
+                photo=stream_image or config.STREAM_IMG_URL,
+                caption=(
+                    _["stream_1"].format(
+                        "https://movie-downloader-api.vercel.app",
+                        title[:45],
+                        duration_min,
+                        user_name,
+                    )
+                    if stream_title else _["stream_2"].format(user_name)
+                ),
                 reply_markup=InlineKeyboardMarkup(button),
             )
             db[chat_id][0]["mystic"] = run

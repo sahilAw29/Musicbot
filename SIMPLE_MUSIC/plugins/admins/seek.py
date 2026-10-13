@@ -37,8 +37,9 @@ async def seek_comm(cli, message: Message, _, chat_id):
     if not playing:
         return await message.reply_text(_["queue_2"])
     duration_seconds = int(playing[0]["seconds"])
-    if duration_seconds == 0:
-        return await message.reply_text(_["admin_22"])
+    # API-backed index/video URLs may not expose duration metadata. They are
+    # still seekable through HTTP range requests, so only enforce the upper
+    # bound when duration is known.
     file_path = playing[0]["file"]
     duration_played = int(playing[0]["played"])
     duration_to_skip = int(query)
@@ -51,7 +52,7 @@ async def seek_comm(cli, message: Message, _, chat_id):
             )
         to_seek = duration_played - duration_to_skip + 1
     else:
-        if (duration_seconds - (duration_played + duration_to_skip)) <= 10:
+        if duration_seconds > 0 and (duration_seconds - (duration_played + duration_to_skip)) <= 10:
             return await message.reply_text(
                 text=_["admin_23"].format(seconds_to_min(duration_played), duration),
                 reply_markup=close_markup(_),
