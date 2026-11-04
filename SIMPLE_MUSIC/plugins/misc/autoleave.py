@@ -18,7 +18,7 @@ import config
 from SIMPLE_MUSIC import app
 from SIMPLE_MUSIC.core.call import SIMPLE, autoend
 from SIMPLE_MUSIC.misc import db
-from SIMPLE_MUSIC.utils.database import get_client, group_assistant, is_active_chat
+from SIMPLE_MUSIC.utils.database import get_client, group_assistant, is_active_chat, is_autoend
 
 
 async def auto_leave():
@@ -64,7 +64,13 @@ asyncio.create_task(auto_leave())
 
 async def auto_end():
     while not await asyncio.sleep(5):
-        # Empty-VC cleanup is always enabled, including autoplay sessions.
+        # The assistant only leaves an empty VC when /autoend is enabled.
+        try:
+            if not await is_autoend():
+                autoend.clear()
+                continue
+        except Exception:
+            continue
         for chat_id in list(autoend.keys()):
             timer = autoend.get(chat_id)
             if not timer:
@@ -96,8 +102,13 @@ async def monitor_alone_vc():
     through a song, it starts the same 1-minute leave-countdown that
     /autoend already uses; if someone comes back in time, it's cancelled."""
     while not await asyncio.sleep(20):
-        # Keep watching even when autoplay is enabled; no listeners means
-        # the assistant should leave after the existing one-minute grace period.
+        # No listeners means the assistant leaves after the one-minute grace
+        # period, but only while /autoend is enabled.
+        try:
+            if not await is_autoend():
+                continue
+        except Exception:
+            continue
         for chat_id in list(db.keys()):
             try:
                 if not await is_active_chat(chat_id):

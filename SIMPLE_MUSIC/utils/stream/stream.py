@@ -11,6 +11,7 @@
 #
 # ❤️ Made with dedication and love by Yoru Music Bot
 # -----------------------------------------------
+import asyncio
 import os
 from random import randint
 from typing import Union
@@ -25,6 +26,7 @@ from SIMPLE_MUSIC.utils.inline import aq_markup, close_markup, stream_markup, st
 from SIMPLE_MUSIC.utils.pastebin import SIMPLEBin
 from SIMPLE_MUSIC.utils.stream.queue import put_queue, put_queue_index
 from SIMPLE_MUSIC.utils.thumbnails import get_thumb
+from config import time_to_seconds
 
 
 def _evict_pending_autoplay(chat_id):
@@ -36,6 +38,23 @@ def _evict_pending_autoplay(chat_id):
     if check and len(check) > 1 and check[-1].get("by") == "Autoplay":
         check.pop()
         SIMPLE._autoplay_reserved[chat_id] = False
+
+
+def _apply_track_details(entry, details):
+    """Put the finished search result on a queue entry that is already live."""
+    entry["title"] = details["title"].title()
+    entry["dur"] = details["duration_min"]
+    entry["vidid"] = details["vidid"]
+    try:
+        entry["seconds"] = max(time_to_seconds(details["duration_min"]) - 3, 0)
+    except Exception:
+        entry["seconds"] = 0
+
+
+async def _apply_late_details(entry, vidid):
+    details = await YouTube.finish_metadata(vidid, 15)
+    if details:
+        _apply_track_details(entry, details)
 
 
 async def stream(
@@ -101,7 +120,7 @@ async def stream(
                 status = True if video else None
                 try:
                     file_path, direct = await YouTube.download(
-                        vidid, mystic, video=status, videoid=True
+                        vidid, mystic, video=status, videoid=True, title=title
                     )
                 except:
                     raise AssistantErr(_["play_14"])
@@ -128,7 +147,7 @@ async def stream(
                 )
                 img = (
                 config.STREAM_IMG_URL
-                if str(vidid).startswith("gameover:")
+                if str(vidid).startswith("gameover:") and not thumbnail
                 else await get_thumb(vidid, title=title, duration=duration_min, thumbnail_url=thumbnail)
             )
                 button = await stream_markup(_, chat_id)
@@ -168,9 +187,11 @@ async def stream(
         status = True if video else None
         try:
             file_path, direct = await YouTube.download(
-                vidid, mystic, videoid=True, video=status
+                vidid, mystic, videoid=True, video=status, title=title
             )
         except:
+            raise AssistantErr(_["play_14"])
+        if not file_path:
             raise AssistantErr(_["play_14"])
         if await is_active_chat(chat_id):
             _evict_pending_autoplay(chat_id)
@@ -185,7 +206,19 @@ async def stream(
                 user_id,
                 "video" if video else "audio",
             )
+            entry = db[chat_id][-1]
             position = len(db.get(chat_id)) - 1
+            details = await YouTube.finish_metadata(vidid)
+            if details:
+                _apply_track_details(entry, details)
+                title, duration_min = entry["title"], entry["dur"]
+                vidid, thumbnail = entry["vidid"], details["thumb"]
+            elif YouTube.metadata_pending(vidid):
+                asyncio.create_task(_apply_late_details(entry, vidid))
+            # Build the card now so skipping to this song is instant later.
+            asyncio.create_task(
+                get_thumb(vidid, title=title, duration=duration_min, thumbnail_url=thumbnail)
+            )
             button = aq_markup(_, chat_id)
             await app.send_message(
                 chat_id=original_chat_id,
@@ -216,26 +249,31 @@ async def stream(
                 "video" if video else "audio",
                 forceplay=forceplay,
             )
-            img = (
-                config.STREAM_IMG_URL
-                if str(vidid).startswith("gameover:")
-                else await get_thumb(vidid, title=title, duration=duration_min, thumbnail_url=thumbnail)
-            )
+            # Audio is already live; the card can wait for the search result.
+            entry = db[chat_id][0]
+            details = await YouTube.finish_metadata(vidid)
+            if details:
+                _apply_track_details(entry, details)
+                title, duration_min = entry["title"], entry["dur"]
+                vidid, thumbnail = entry["vidid"], details["thumb"]
+            elif YouTube.metadata_pending(vidid):
+                asyncio.create_task(_apply_late_details(entry, vidid))
+            img = await get_thumb(vidid, title=title, duration=duration_min, thumbnail_url=thumbnail)
             button = await stream_markup(_, chat_id)
             run = await app.send_photo(
                 original_chat_id,
                 has_spoiler=True,
                 photo=img,
                 caption=_["stream_1"].format(
-                    f"https://t.me/{app.username}?start=info_{vidid}",
+                    YouTube.card_link(app.username, vidid, title),
                     title[:23],
                     duration_min,
                     user_name,
                 ),
                 reply_markup=InlineKeyboardMarkup(button),
             )
-            db[chat_id][0]["mystic"] = run
-            db[chat_id][0]["markup"] = "stream"
+            entry["mystic"] = run
+            entry["markup"] = "stream"
     elif streamtype == "soundcloud":
         file_path = result["filepath"]
         title = result["title"]
@@ -403,7 +441,7 @@ async def stream(
             )
             img = (
                 config.STREAM_IMG_URL
-                if str(vidid).startswith("gameover:")
+                if str(vidid).startswith("gameover:") and not thumbnail
                 else await get_thumb(vidid, title=title, duration=duration_min, thumbnail_url=thumbnail)
             )
             button = await stream_markup(_, chat_id)
@@ -412,7 +450,7 @@ async def stream(
                 has_spoiler=True,
                 photo=img,
                 caption=_["stream_1"].format(
-                    f"https://t.me/{app.username}?start=info_{vidid}",
+                    YouTube.card_link(app.username, vidid, title),
                     title[:23],
                     duration_min,
                     user_name,

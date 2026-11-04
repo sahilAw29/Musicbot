@@ -128,7 +128,7 @@ async def skip(cli, message: Message, _, chat_id):
         run = await message.reply_photo(
             photo=img,
             caption=_["stream_1"].format(
-                f"https://t.me/{app.username}?start=info_{videoid}",
+                YouTube.card_link(app.username, videoid, title),
                 title[:23],
                 check[0]["dur"],
                 user,
@@ -145,6 +145,7 @@ async def skip(cli, message: Message, _, chat_id):
                 mystic,
                 videoid=True,
                 video=status,
+                title=title,
             )
         except:
             return await mystic.edit_text(_["call_6"])
@@ -161,7 +162,7 @@ async def skip(cli, message: Message, _, chat_id):
         run = await message.reply_photo(
             photo=img,
             caption=_["stream_1"].format(
-                f"https://t.me/{app.username}?start=info_{videoid}",
+                YouTube.card_link(app.username, videoid, title),
                 title[:23],
                 check[0]["dur"],
                 user,
@@ -235,7 +236,7 @@ async def skip(cli, message: Message, _, chat_id):
             run = await message.reply_photo(
                 photo=img,
                 caption=_["stream_1"].format(
-                    f"https://t.me/{app.username}?start=info_{videoid}",
+                    YouTube.card_link(app.username, videoid, title),
                     title[:23],
                     check[0]["dur"],
                     user,

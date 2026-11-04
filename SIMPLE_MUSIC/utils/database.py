@@ -212,22 +212,26 @@ async def set_upvotes(chat_id: int, mode: int):
     )
 
 
+autoend_enabled = None  # memory copy; the VC monitors check this constantly
+
+
 async def is_autoend() -> bool:
-    chat_id = 1234
-    user = await autoenddb.find_one({"chat_id": chat_id})
-    if not user:
-        return False
-    return True
+    global autoend_enabled
+    if autoend_enabled is None:
+        autoend_enabled = bool(await autoenddb.find_one({"chat_id": 1234}))
+    return autoend_enabled
 
 
 async def autoend_on():
-    chat_id = 1234
-    await autoenddb.insert_one({"chat_id": chat_id})
+    global autoend_enabled
+    autoend_enabled = True
+    await autoenddb.update_one({"chat_id": 1234}, {"$set": {"chat_id": 1234}}, upsert=True)
 
 
 async def autoend_off():
-    chat_id = 1234
-    await autoenddb.delete_one({"chat_id": chat_id})
+    global autoend_enabled
+    autoend_enabled = False
+    await autoenddb.delete_many({"chat_id": 1234})
 
 
 autoplay_cache: Dict[int, bool] = {}

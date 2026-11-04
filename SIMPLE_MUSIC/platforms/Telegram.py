@@ -146,7 +146,7 @@ class TeleAPI:
             import aiohttp
             timeout = aiohttp.ClientTimeout(total=20)
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(config.START_IMG_URL) as response:
+                async with session.get(config.start_picture()) as response:
                     response.raise_for_status()
                     with open(cover_path, "wb") as cover_file:
                         cover_file.write(await response.read())

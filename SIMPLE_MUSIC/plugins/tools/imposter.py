@@ -103,7 +103,7 @@ async def chk_usr(_, message: Message):
             message.from_user.last_name,
         )
     if msg != "":
-        await message.reply_photo(config.START_IMG_URL, caption=msg)
+        await message.reply_photo(config.start_picture(), caption=msg)
 
 
 @app.on_message(filters.group & filters.command("imposter") & ~filters.bot & ~filters.via_bot & admin_filter)

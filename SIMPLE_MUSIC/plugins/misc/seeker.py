@@ -26,9 +26,8 @@ async def timer():
             if not playing:
                 continue
             duration = int(playing[0]["seconds"])
-            if duration == 0:
-                continue
-            if db[chat_id][0]["played"] >= duration:
+            # Unknown length still counts up so the player bar keeps moving.
+            if duration > 0 and db[chat_id][0]["played"] >= duration:
                 continue
             db[chat_id][0]["played"] += 1
 

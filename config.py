@@ -60,6 +60,9 @@ GAMEOVER_API_URL = getenv(
 ).rstrip("/")
 GAMEOVER_API_KEY = getenv("GAMEOVER_API_KEY", "gameover_master_unlimited_key_2026")
 VDA_KEYS_URL = getenv("VDA_KEYS_URL", "https://raw.githubusercontent.com/replitprivet-dotcom/Key/refs/heads/main/key.js")
+# /play and /vplay audio/video source.
+ANNIE_API_URL = getenv("ANNIE_API_URL", "https://anniemusicapi.teamgod.online").rstrip("/")
+
 MEDIA_API_BASE_URL = getenv("MEDIA_API_BASE_URL", "http://172.104.38.31").rstrip("/")
 MEDIA_API_VIDEO_QUALITY = getenv("MEDIA_API_VIDEO_QUALITY", "720")
 COOKIES_URL = getenv(
@@ -169,6 +172,14 @@ PLAYLIST_IMG_URL = "https://files.catbox.moe/cc6f5z.jpg"
 STATS_IMG_URL = "https://files.catbox.moe/s0eczv.jpg"
 TELEGRAM_AUDIO_URL = "https://files.catbox.moe/s0eczv.jpg"
 TELEGRAM_VIDEO_URL = "https://files.catbox.moe/s0eczv.jpg"
+
+
+def start_picture():
+    """START_IMG_URL for places that need a photo, even when /start uses a video."""
+    url = globals().get("START_IMG_URL")
+    video = str(url).lower().split("?")[0].endswith((".mp4", ".mov", ".m4v", ".mkv", ".webm", ".gif"))
+    return STREAM_IMG_URL if video else url
+
 STREAM_IMG_URL = "https://files.catbox.moe/s0eczv.jpg"
 SOUNCLOUD_IMG_URL = "https://files.catbox.moe/s0eczv.jpg"
 YOUTUBE_IMG_URL = "https://files.catbox.moe/s0eczv.jpg"

@@ -13,17 +13,20 @@
 # -----------------------------------------------
 
 import asyncio
+import hashlib
+import json
 import os
 import re
 import time
 from typing import Union
+from urllib.parse import quote_plus
 
 import aiohttp
 import aiofiles
 import yt_dlp
 from pyrogram.enums import MessageEntityType
 from pyrogram.types import Message
-from py_yt import Playlist
+from py_yt import Playlist, VideosSearch
 
 from SIMPLE_MUSIC import LOGGER
 from SIMPLE_MUSIC.utils.cookies import fetch_cookie_file
@@ -56,6 +59,13 @@ VIDEO_INFO_CACHE = {}
 RELATED_CACHE = {}
 RELATED_CACHE_TTL_SECONDS = 600
 GAMEOVER_CACHE = {}
+ANNIE_QUERIES = {}   # vidid -> exact text the user asked for
+ANNIE_TRACKS = {}    # vidid -> details dict, so inline buttons reopen the same track
+ANNIE_FILES = {}     # (vidid, is_video) -> stream URL or downloaded file
+ANNIE_STREAMABLE = {}  # API URL -> True if ffmpeg can play it directly
+ANNIE_META_CACHE = {}  # query -> resolved title/duration/thumbnail/link
+ANNIE_META_TASKS = {}  # placeholder vidid -> search still running in the background
+ANNIE_LOCKS = {}     # file path -> lock, so one song is never downloaded twice at once
 CACHE_TTL_SECONDS = 120
 
 
@@ -347,6 +357,222 @@ async def engine_shuvo(link: str, is_video: bool, path: str) -> str:
         pass
     return None
 
+def annie_url(query: str, is_video: bool) -> str:
+    # "_" is escaped because the queue detects vid_/live_/index_ inside this value.
+    encoded = quote_plus(" ".join(str(query).split()), safe="").replace("_", "%5F")
+    return f"{config.ANNIE_API_URL}/song/{'video' if is_video else 'audio'}?q={encoded}"
+
+
+def _minutes_text(seconds) -> str:
+    minutes, secs = divmod(int(seconds or 0), 60)
+    return f"{minutes:02d}:{secs:02d}"
+
+
+def _has_duration(text) -> bool:
+    try:
+        return int(time_to_seconds(str(text))) > 0
+    except Exception:
+        return False
+
+
+def _meta(title, vidid, duration, thumb=None):
+    if not (vidid and re.fullmatch(r"[A-Za-z0-9_-]{11}", str(vidid))):
+        return None
+    return {
+        "title": str(title or "").strip(),
+        "vidid": vidid,
+        "duration_min": duration if _has_duration(duration) else "00:00",
+        "thumb": (thumb or f"https://i.ytimg.com/vi/{vidid}/hqdefault.jpg").split("?")[0],
+        "link": f"https://www.youtube.com/watch?v={vidid}",
+    }
+
+
+async def _meta_from_youtube(query: str):
+    """Direct YouTube search: real video ID, title, length and thumbnail."""
+    payload = await VideosSearch(query, limit=1).next()
+    items = (payload or {}).get("result") or []
+    if not items:
+        return None
+    item = items[0]
+    thumbs = item.get("thumbnails") or [{}]
+    return _meta(item.get("title"), item.get("id"), item.get("duration"), thumbs[0].get("url"))
+
+
+async def _meta_from_search_api(query: str):
+    """Existing search services. GameOver IDs are mapped back to the YouTube ID."""
+    results = await search_youtube_api(query)
+    if not results:
+        return None
+    item = results[0]
+    vidid = item.get("videoId")
+    if str(vidid).startswith("gameover:"):
+        vidid = _extract_video_id(str(item.get("watchUrl") or ""))
+    return _meta(item.get("title"), vidid, item.get("durationText"), _result_thumbnail(item, vidid))
+
+
+async def _probe_api_file(query: str):
+    """Read the real length (and title tag) from the API's own audio file."""
+    await asyncio.sleep(1.5)  # search usually answers first, saving this API call
+    process = await asyncio.create_subprocess_exec(
+        "ffprobe", "-v", "error", "-show_entries", "format=duration:format_tags=title",
+        "-of", "json", annie_url(query, False),
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+    )
+    try:
+        output, _ = await asyncio.wait_for(process.communicate(), 9)
+    finally:
+        if process.returncode is None:
+            process.kill()
+    info = json.loads(output or b"{}").get("format") or {}
+    seconds = int(float(info.get("duration") or 0))
+    return {"title": (info.get("tags") or {}).get("title"), "duration_min": _minutes_text(seconds)}
+
+
+async def resolve_track_meta(query: str):
+    """Ask every source at once and combine the answers: search supplies the
+    video ID and thumbnail, the API file supplies the length if search cannot.
+    One slow or dead service can no longer leave the card empty."""
+    key = query.lower()
+    if key in ANNIE_META_CACHE:
+        return ANNIE_META_CACHE[key]
+    found = probed = None
+    tasks = [
+        asyncio.create_task(_meta_from_youtube(query)),
+        asyncio.create_task(_meta_from_search_api(query)),
+        asyncio.create_task(_probe_api_file(query)),
+    ]
+    try:
+        for future in asyncio.as_completed(tasks, timeout=11):
+            try:
+                result = await future
+            except asyncio.TimeoutError:
+                break
+            except Exception as error:
+                LOGGER(__name__).warning(f"Track details source failed for '{query}': {error!r}")
+                continue
+            if not result:
+                continue
+            if "vidid" not in result:
+                probed = result
+            elif not found or (_has_duration(result["duration_min"]) and not _has_duration(found["duration_min"])):
+                found = result
+            if found and (_has_duration(found["duration_min"]) or (probed and _has_duration(probed["duration_min"]))):
+                break
+    finally:
+        for task in tasks:
+            task.cancel()
+
+    if not found and not probed:
+        LOGGER(__name__).warning(f"No track details from any source for '{query}'")
+        return None
+    best = dict(found or {"title": "", "vidid": None, "duration_min": "00:00", "thumb": None, "link": ""})
+    if probed:
+        if not _has_duration(best["duration_min"]) and _has_duration(probed["duration_min"]):
+            best["duration_min"] = probed["duration_min"]
+        best["title"] = best["title"] or probed["title"]
+    best["title"] = best["title"] or query
+    ANNIE_META_CACHE[key] = best
+    return best
+
+
+async def annie_can_stream(url: str):
+    """Decide how to play an API URL. True: stream it now. False: ffmpeg cannot
+    open it live, so save it first. None: the API returned an error."""
+    try:
+        session = await get_session()
+        async with session.get(
+            url,
+            headers={"User-Agent": "YoruMusicBot/1.0", "Range": "bytes=0-65535"},
+            timeout=aiohttp.ClientTimeout(total=15, sock_connect=5, sock_read=12),
+        ) as response:
+            content_type = response.headers.get("Content-Type", "").lower()
+            if response.status not in (200, 206) or content_type.startswith(("application/json", "text/")):
+                LOGGER(__name__).warning(f"Annie API rejected {url}: {response.status} {content_type}")
+                return None
+            if response.status == 206:
+                return True
+            # No Range support: an MP4 only plays live if its index comes first.
+            head = b""
+            async for chunk in response.content.iter_chunked(16 * 1024):
+                head += chunk
+                if len(head) >= 64 * 1024:
+                    break
+            return b"moov" in head
+    except Exception as error:
+        LOGGER(__name__).warning(f"Annie API check failed for {url}: {error}")
+        return False
+
+
+async def annie_source(query: str, is_video: bool, vid_id: str = None):
+    """Return the fastest playable source: the API URL, or a saved file when
+    the API response cannot be streamed."""
+    query = " ".join(str(query or "").split())
+    if not query:
+        return None
+    url = annie_url(query, is_video)
+    streamable = ANNIE_STREAMABLE.get(url)
+    if streamable is None:
+        streamable = await annie_can_stream(url)
+        if streamable is None:
+            return None
+        ANNIE_STREAMABLE[url] = streamable
+    if not streamable:
+        return await annie_download(query, is_video, vid_id)
+    if vid_id:
+        ANNIE_FILES[(vid_id, is_video)] = url
+    return url
+
+
+def _annie_cached(vid_id: str, is_video: bool):
+    source = ANNIE_FILES.get((vid_id, is_video))
+    if source and (source.startswith("http") or os.path.exists(source)):
+        return source
+    return None
+
+
+async def annie_download(query: str, is_video: bool, vid_id: str = None):
+    """Save a song or video from the Annie API for playback from disk."""
+    query = " ".join(str(query or "").split())
+    if not query:
+        return None
+    kind = "video" if is_video else "audio"
+    digest = hashlib.sha1(f"{kind}:{query.lower()}".encode("utf-8")).hexdigest()[:16]
+    final_path = os.path.join(DOWNLOAD_DIR, f"annie_{digest}.{'mp4' if is_video else 'm4a'}")
+    temp_path = f"{final_path}.part"
+
+    async with ANNIE_LOCKS.setdefault(final_path, asyncio.Lock()):
+        if not (os.path.exists(final_path) and os.path.getsize(final_path) > 1024):
+            try:
+                session = await get_session()
+                async with session.get(
+                    f"{config.ANNIE_API_URL}/song/{kind}",
+                    params={"q": query},
+                    headers={"User-Agent": "YoruMusicBot/1.0"},
+                    timeout=aiohttp.ClientTimeout(total=900, sock_connect=15, sock_read=120),
+                ) as response:
+                    content_type = response.headers.get("Content-Type", "").lower()
+                    if response.status != 200 or content_type.startswith(("application/json", "text/")):
+                        LOGGER(__name__).warning(
+                            f"Annie API {kind} failed for '{query}': {response.status} {content_type}"
+                        )
+                        return None
+                    async with aiofiles.open(temp_path, "wb") as output:
+                        async for chunk in response.content.iter_chunked(256 * 1024):
+                            await output.write(chunk)
+                if os.path.getsize(temp_path) <= 1024:
+                    return None
+                os.replace(temp_path, final_path)
+            except Exception as error:
+                LOGGER(__name__).warning(f"Annie API {kind} error for '{query}': {error}")
+                return None
+            finally:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+    if vid_id:
+        ANNIE_FILES[(vid_id, is_video)] = final_path
+    return final_path
+
+
 async def _core_download(link: str, is_video: bool) -> str:
     vid_id = link.split('v=')[-1].split('&')[0] if 'v=' in link else link.split("/")[-1].split("?")[0]
     ext = "mp4" if is_video else "mp3"
@@ -556,6 +782,9 @@ class YouTubeAPI:
         return None
 
     async def details(self, link: str, videoid: Union[bool, str] = None):
+        if videoid and link in ANNIE_TRACKS:
+            track = ANNIE_TRACKS[link]
+            return track["title"], track["duration_min"], int(time_to_seconds(track["duration_min"])), track["thumb"], link
         if videoid: link = self.base + link
         if "&" in link: link = link.split("&")[0]
         # Direct YouTube URL — resolve the exact ID with cookies first.
@@ -594,7 +823,11 @@ class YouTubeAPI:
         return (await self.details(link, videoid))[3]
 
     async def video(self, link: str, videoid: Union[bool, str] = None):
-        if videoid: link = self.base + link
+        if videoid:
+            played = _annie_cached(link, True)
+            if played:
+                return 1, played
+            link = self.base + link
         if "&" in link: link = link.split("&")[0]
         try:
             res = await download_video(link)
@@ -625,7 +858,79 @@ class YouTubeAPI:
             return [data["id"] for data in videos[:limit] if data and data.get("id")]
         except: return []
 
+    def _remember_track(self, query, details, placeholder=None):
+        vidid = details["vidid"]
+        ANNIE_QUERIES[vidid] = query
+        ANNIE_TRACKS[vidid] = details
+        if placeholder:
+            ANNIE_QUERIES[placeholder] = query
+            ANNIE_TRACKS[placeholder] = details
+            for is_video in (False, True):
+                source = ANNIE_FILES.get((placeholder, is_video))
+                if source:
+                    ANNIE_FILES[(vidid, is_video)] = source
+
+    async def api_track(self, query: str):
+        """Prepare a /play or /vplay text search. Playback uses the user's
+        exact words and never waits long here: if search is not done within
+        a moment it keeps running, and finish_metadata() fills in the card."""
+        query = " ".join(str(query).split())
+        placeholder = "annie_" + hashlib.sha1(query.lower().encode("utf-8")).hexdigest()[:12]
+        task = asyncio.create_task(resolve_track_meta(query))
+        await asyncio.wait({task}, timeout=0.8)
+        found = task.result() if task.done() and not task.exception() else None
+        if found:
+            details = dict(found)
+            details["vidid"] = details["vidid"] or placeholder
+            details["thumb"] = details["thumb"] or config.STREAM_IMG_URL
+            self._remember_track(query, details)
+            return details, details["vidid"]
+        details = {
+            "title": query,
+            "link": "",
+            "vidid": placeholder,
+            "duration_min": "00:00",
+            "thumb": config.STREAM_IMG_URL,
+        }
+        if not task.done():
+            ANNIE_META_TASKS[placeholder] = task
+        self._remember_track(query, details)
+        return details, placeholder
+
+    def metadata_pending(self, vidid: str) -> bool:
+        return vidid in ANNIE_META_TASKS
+
+    async def finish_metadata(self, vidid: str, timeout: float = 5):
+        """Wait briefly for a background search so the card can be complete.
+        The search keeps running if it needs longer. Returns finished details,
+        or None when nothing newer is available yet."""
+        task = ANNIE_META_TASKS.get(vidid)
+        if not task:
+            return None
+        await asyncio.wait({task}, timeout=timeout)
+        if not task.done():
+            return None
+        ANNIE_META_TASKS.pop(vidid, None)
+        found = None if task.cancelled() or task.exception() else task.result()
+        if not found:
+            return None
+        details = dict(found)
+        details["vidid"] = details["vidid"] or vidid
+        details["thumb"] = details["thumb"] or config.STREAM_IMG_URL
+        self._remember_track(ANNIE_QUERIES.get(vidid) or details["title"], details, placeholder=vidid)
+        return details
+
+    @staticmethod
+    def card_link(username: str, vidid: str, title: str) -> str:
+        """Title link for playback cards: the bot's track info page for real
+        YouTube IDs, otherwise a YouTube search for the song."""
+        if re.fullmatch(r"[A-Za-z0-9_-]{11}", str(vidid)) and not str(vidid).startswith("annie_"):
+            return f"https://t.me/{username}?start=info_{vidid}"
+        return f"https://www.youtube.com/results?search_query={quote_plus(str(title))}"
+
     async def track(self, link: str, videoid: Union[bool, str] = None):
+        if videoid and link in ANNIE_TRACKS:
+            return ANNIE_TRACKS[link], link
         if videoid: link = self.base + link
         if "&" in link: link = link.split("&")[0]
         # Direct YouTube URL — resolve the exact ID with cookies first.
@@ -709,75 +1014,15 @@ class YouTubeAPI:
         is_video = bool(video)
         vid_id = link.split('v=')[-1].split('&')[0] if 'v=' in link else link.split("/")[-1].split("?")[0]
 
-        title_text = None
-        duration_sec = 0
-        is_live = False
-        # A resolver result is already a playable direct stream; use it before
-        # any legacy metadata/download API call.
-        if not is_video:
-            cached = GAMEOVER_CACHE.get(vid_id)
-            if cached and time.monotonic() - cached[0] < CACHE_TTL_SECONDS:
-                return cached[1], True
-        try:
-            title_text, _, duration_sec, _, _ = await self.details(link)
-        except:
-            is_live = True
-        if not is_video:
-            resolved = await resolve_gameover(title_text or vid_id)
-            if resolved and resolved.get("stream_url"):
-                GAMEOVER_CACHE[vid_id] = (time.monotonic(), resolved["stream_url"])
-                return resolved["stream_url"], True
+        cached = _annie_cached(vid_id, is_video)
+        if cached:
+            return cached, True
 
-        # <emoji id='5258203794772085854'>⚡</emoji> 1 HOUR LIMIT BYPASS (>3600 sec)
-        if is_live or duration_sec == 0 or duration_sec > 3600:
-            # No cookie lookup here. Use the configured API proxy first.
+        query = ANNIE_QUERIES.get(vid_id) or title
+        if not query:
             try:
-                session = await get_session()
-                async with session.get(f"{YTPROXY_URL}/info/{vid_id}", headers={"x-api-key": YT_API_KEY}, timeout=3) as r:
-                    if r.status == 200:
-                        data = await r.json()
-                        stream_url = data.get('video_url') if is_video else data.get('audio_url')
-                        if stream_url: return stream_url, False 
-            except: pass
-            
-            loop = asyncio.get_running_loop()
-            cookie_path = await fetch_cookie_file()
-            def extract_direct_url():
-                format_str = "best[height<=480]/best" if is_video else "bestaudio/best"
-                base_opts = {
-                    "quiet": True, "no_warnings": True,
-                    "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
-                    "format": format_str,
-                }
-                if cookie_path:
-                    base_opts["cookiefile"] = cookie_path
-                # Cookie-backed yt-dlp extraction
-                # VPS pe bina cookies android client kaam karta hai
-                try:
-                    with yt_dlp.YoutubeDL(base_opts) as ydl:
-                        info = ydl.extract_info(link, download=False)
-                        url = info.get("url") or (info.get("formats") or [{}])[-1].get("url")
-                        if url: return url
-                except Exception:
-                    pass
-                # Fallback without cookies; VDA handles authenticated downloads.
-                try:
-                    with yt_dlp.YoutubeDL(base_opts) as ydl:
-                        info = ydl.extract_info(link, download=False)
-                        return info.get("url") or (info.get("formats") or [{}])[-1].get("url")
-                except Exception:
-                    return None
-
-
-            
-            try:
-                direct_url = await loop.run_in_executor(None, extract_direct_url)
-                if direct_url: return direct_url, False
-            except: pass
-
-        # <emoji id='5258203794772085854'>⚡</emoji> REGULAR DOWNLOAD (Chunk mode for Zero Error)
-        try:
-            res = await _core_download(link, is_video)
-            return (res, True) if res else (None, False)
-        except:
-            return None, False
+                query = (await self.details(link))[0]
+            except Exception:
+                query = link
+        source = await annie_source(query, is_video, vid_id)
+        return (source, True) if source else (None, False)

@@ -1,13 +1,18 @@
 import asyncio
+import os
 import random
 import time
 import requests
 from html import escape
+from urllib.parse import urlsplit
+
+import aiofiles
+import aiohttp
 from pyrogram import filters
 from pyrogram.enums import ChatType
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 import config
-from SIMPLE_MUSIC import app
+from SIMPLE_MUSIC import LOGGER, app
 from SIMPLE_MUSIC.platforms.Youtube import get_exact_video_info
 from SIMPLE_MUSIC.misc import _boot_
 from SIMPLE_MUSIC.plugins.sudo.sudoers import sudoers_list
@@ -93,14 +98,67 @@ async def send_welcome_animation(message: Message):
         pass
 
 
+START_MEDIA_FILE_IDS = {}  # video URL -> Telegram file_id, so repeat /start is instant
+
+
+def _start_media_senders(client, media):
+    """Try the type the URL ends with first: Telegram can turn a video URL
+    into a still picture when it is sent as a photo."""
+    photo = (client.send_photo, "photo")
+    video = (client.send_video, "video")
+    animation = (client.send_animation, "animation")
+    extension = os.path.splitext(urlsplit(str(media)).path)[1].lower()
+    if extension in (".mp4", ".mov", ".m4v", ".mkv", ".webm"):
+        return video, animation
+    if extension == ".gif":
+        return animation, video, photo
+    return photo, video, animation
+
+
+async def _upload_start_video(client, url, kwargs):
+    """Telegram cannot fetch some video URLs itself, so upload those directly."""
+    path = os.path.join("downloads", "start_media.mp4")
+    os.makedirs("downloads", exist_ok=True)
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, timeout=aiohttp.ClientTimeout(total=60)) as response:
+            response.raise_for_status()
+            async with aiofiles.open(path, "wb") as output:
+                async for chunk in response.content.iter_chunked(256 * 1024):
+                    await output.write(chunk)
+    try:
+        return await client.send_video(video=path, **kwargs)
+    finally:
+        os.remove(path)
+
+
 async def send_start_media(client, chat_id, media, caption, reply_markup=None):
     """Send START_IMG_URL whether it is a photo, video, or animation file-id."""
     kwargs = {"chat_id": chat_id, "caption": caption, "reply_markup": reply_markup}
-    for sender, field in ((client.send_photo, "photo"), (client.send_video, "video"), (client.send_animation, "animation")):
+    file_id = START_MEDIA_FILE_IDS.get(media)
+    if file_id:
         try:
-            return await sender(**{field: media}, **kwargs)
+            return await client.send_video(video=file_id, **kwargs)
         except Exception:
+            START_MEDIA_FILE_IDS.pop(media, None)
+
+    senders = _start_media_senders(client, media)
+    for sender, field in senders:
+        try:
+            sent = await sender(**{field: media}, **kwargs)
+        except Exception as error:
+            LOGGER(__name__).warning(f"/start {field} failed for {media}: {error}")
             continue
+        if field == "video" and getattr(sent, "video", None):
+            START_MEDIA_FILE_IDS[media] = sent.video.file_id
+        return sent
+
+    if senders[0][1] == "video" and str(media).startswith("http"):
+        try:
+            sent = await _upload_start_video(client, media, kwargs)
+            START_MEDIA_FILE_IDS[media] = sent.video.file_id
+            return sent
+        except Exception as error:
+            LOGGER(__name__).warning(f"/start video upload failed for {media}: {error}")
     return await client.send_message(chat_id, caption, reply_markup=reply_markup)
 
 

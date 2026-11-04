@@ -60,9 +60,15 @@ async def seek_comm(cli, message: Message, _, chat_id):
         to_seek = duration_played + duration_to_skip + 1
     mystic = await message.reply_text(_["admin_24"])
     if "vid_" in file_path:
-        n, file_path = await YouTube.video(playing[0]["vidid"], True)
-        if n == 0:
-            return await message.reply_text(_["admin_22"])
+        file_path, _direct = await YouTube.download(
+            playing[0]["vidid"],
+            None,
+            video=playing[0]["streamtype"] == "video",
+            videoid=True,
+            title=playing[0]["title"],
+        )
+        if not file_path:
+            return await mystic.edit_text(_["admin_22"])
     check = (playing[0]).get("speed_path")
     if check:
         file_path = check

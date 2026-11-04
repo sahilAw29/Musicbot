@@ -17,11 +17,11 @@ from pyrogram.types import Message
 from SIMPLE_MUSIC import app
 from SIMPLE_MUSIC.core.call import SIMPLE
 
-welcome = 20
 close = 30
 
 
-@app.on_message(filters.video_chat_started, group=welcome)
+# video_chat_started must not stop anything: the assistant starts the VC itself
+# when it plays, so that message would end the song it just began.
 @app.on_message(filters.video_chat_ended, group=close)
-async def welcome(_, message: Message):
+async def video_chat_closed(_, message: Message):
     await SIMPLE.stop_stream_force(message.chat.id)

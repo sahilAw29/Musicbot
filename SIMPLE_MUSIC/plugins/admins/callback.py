@@ -229,19 +229,15 @@ async def del_back_playlist(client, CallbackQuery, _):
             )
         await CallbackQuery.answer("10s Forward" if command == "Fwd10" else "10s Back")
         if "vid_" in file_path:
-            if playing[0]["streamtype"] == "video":
-                n, file_path = await YouTube.video(playing[0]["vidid"], True)
-                if n == 0:
-                    return await CallbackQuery.answer(_["admin_22"], show_alert=True)
-            else:
-                file_path, _ = await YouTube.download(
-                    playing[0]["vidid"],
-                    None,
-                    video=None,
-                    videoid=True,
-                )
-                if not file_path:
-                    return await CallbackQuery.answer(_["admin_22"], show_alert=True)
+            file_path, _direct = await YouTube.download(
+                playing[0]["vidid"],
+                None,
+                video=playing[0]["streamtype"] == "video",
+                videoid=True,
+                title=playing[0]["title"],
+            )
+            if not file_path:
+                return await CallbackQuery.answer(_["admin_22"], show_alert=True)
         check = (playing[0]).get("speed_path")
         if check:
             file_path = check
@@ -373,7 +369,7 @@ async def del_back_playlist(client, CallbackQuery, _):
             run = await CallbackQuery.message.reply_photo(
                 photo=img,
                 caption=_["stream_1"].format(
-                    f"https://t.me/{app.username}?start=info_{videoid}",
+                    YouTube.card_link(app.username, videoid, title),
                     title[:23],
                     duration,
                     user,
@@ -393,6 +389,7 @@ async def del_back_playlist(client, CallbackQuery, _):
                     mystic,
                     videoid=True,
                     video=status,
+                    title=title,
                 )
             except:
                 return await mystic.edit_text(_["call_6"])
@@ -409,7 +406,7 @@ async def del_back_playlist(client, CallbackQuery, _):
             run = await CallbackQuery.message.reply_photo(
                 photo=img,
                 caption=_["stream_1"].format(
-                    f"https://t.me/{app.username}?start=info_{videoid}",
+                    YouTube.card_link(app.username, videoid, title),
                     title[:23],
                     duration,
                     user,
@@ -485,7 +482,7 @@ async def del_back_playlist(client, CallbackQuery, _):
                 run = await CallbackQuery.message.reply_photo(
                     photo=img,
                     caption=_["stream_1"].format(
-                        f"https://t.me/{app.username}?start=info_{videoid}",
+                        YouTube.card_link(app.username, videoid, title),
                         title[:23],
                         duration,
                         user,
@@ -506,9 +503,6 @@ async def markup_timer():
                     continue
                 playing = db.get(chat_id)
                 if not playing:
-                    continue
-                duration_seconds = int(playing[0]["seconds"])
-                if duration_seconds == 0:
                     continue
                 try:
                     mystic = playing[0]["mystic"]

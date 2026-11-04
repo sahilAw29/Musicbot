@@ -4,6 +4,8 @@
 # files by hand. Overrides are stored in MongoDB and applied on
 # top of config.py at startup + live the moment they're changed.
 # -----------------------------------------------
+from os import getenv
+
 import config
 from SIMPLE_MUSIC.core.mongo import mongodb
 
@@ -48,7 +50,9 @@ def get_toggle(key: str) -> bool:
 
 async def set_setting(key: str, value):
     """Persist an override to Mongo and apply it immediately (no restart needed)."""
-    await settingsdb.update_one({"_id": key}, {"$set": {"value": value}}, upsert=True)
+    await settingsdb.update_one(
+        {"_id": key}, {"$set": {"value": value, "env": getenv(key)}}, upsert=True
+    )
     setattr(config, key, value)
 
 
@@ -56,6 +60,10 @@ async def load_overrides():
     """Called once at startup — pulls saved overrides from Mongo onto config.py."""
     try:
         async for doc in settingsdb.find({}):
-            setattr(config, doc["_id"], doc["value"])
+            key = doc["_id"]
+            # A START_IMG_URL changed in .env after the panel save wins.
+            if key == "START_IMG_URL" and getenv(key) and doc.get("env") != getenv(key):
+                continue
+            setattr(config, key, doc["value"])
     except Exception:
         pass

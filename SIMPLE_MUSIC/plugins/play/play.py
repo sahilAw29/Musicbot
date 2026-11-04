@@ -150,7 +150,7 @@ async def play_commnd(
                 "link": await Telegram.get_link(message),
                 "path": stream_path,
                 "dur": await Telegram.get_duration(audio_telegram, file_path),
-                "image": config.START_IMG_URL if play_video else None,
+                "image": config.start_picture() if play_video else None,
             }
             try:
                 await stream(_, mystic, user_id, details, chat_id, user_name, message.chat.id, video=play_video if play_video else None, streamtype="telegram", forceplay=fplay)
@@ -336,7 +336,7 @@ async def play_commnd(
                         "link": url,
                         "path": stream_path,
                         "dur": await Telegram.get_duration(tg_audio, file_path),
-                        "image": config.START_IMG_URL if play_video else None,
+                        "image": config.start_picture() if play_video else None,
                     }
                     try:
                         await stream(_, mystic, user_id, details, chat_id, user_name, message.chat.id, video=play_video if play_video else None, streamtype="telegram", forceplay=fplay)
@@ -396,7 +396,7 @@ async def play_commnd(
         if any(i in query.lower() for i in _sq):
             query = _extract_clean_id(query)
         try:
-            details, track_id = await YouTube.track(query)
+            details, track_id = await YouTube.api_track(query)
         except:
             return await mystic.edit_text(_["play_3"])
         streamtype = "youtube"

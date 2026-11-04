@@ -11,6 +11,8 @@
 #
 # ❤️ Made with dedication and love by Yoru Music Bot
 # -----------------------------------------------
+from SIMPLE_MUSIC.misc import db
+from strings import CARD_CREDIT
 import math
 import random
 import config
@@ -50,6 +52,7 @@ def stream_caption(title, duration, requester):
         f"<b><emoji id='5989830505615331276'>🎵</emoji> ᴛɪᴛʟᴇ :</b> {title}\n"
         f"<b><emoji id='5258419835922030550'>🕔</emoji> ʟᴇɴɢᴛʜ :</b> {duration} ᴍɪɴs\n"
         f"<b><emoji id='5256143829672672750'>👤</emoji>ʀᴇǫᴜᴇsᴛᴇʀ :</b> {requester}</blockquote>"
+        f"{CARD_CREDIT}"
     )
 
 
@@ -88,18 +91,15 @@ async def stream_markup_timer(_, chat_id, played, dur):
     played_sec = time_to_seconds(played)
     duration_sec = time_to_seconds(dur)
 
-    remaining_sec = duration_sec - played_sec
-    if remaining_sec < 0:
-        remaining_sec = 0
-
+    remaining_sec = max(duration_sec - played_sec, 0)
     rem_min = remaining_sec // 60
     rem_sec = remaining_sec % 60
-    remaining = f"{rem_min:02d}:{rem_sec:02d}"
+    remaining = f"{rem_min:02d}:{rem_sec:02d}" if duration_sec else "--:--"
 
     percentage = (played_sec / duration_sec) * 100 if duration_sec else 0
     umm = math.floor(percentage)
 
-    if 0 < umm <= 10:
+    if umm <= 10:
         bar = "|♬—————————|-"
     elif 10 < umm < 20:
         bar = "|—♬————————|-"
@@ -116,7 +116,7 @@ async def stream_markup_timer(_, chat_id, played, dur):
     elif 70 <= umm < 80:
         bar = "|———————♬——|-"
     elif 80 <= umm < 95:
-        bar = "|指標———————♬—|-"
+        bar = "|————————♬—|-"
     else:
         bar = "|—————————♬|-"
 
@@ -157,6 +157,13 @@ async def stream_markup_timer(_, chat_id, played, dur):
 
 
 async def stream_markup(_, chat_id):
+    # Show the real bar from the first moment instead of a "loading" button.
+    playing = db.get(chat_id)
+    if playing:
+        try:
+            return await stream_markup_timer(_, chat_id, "00:00", playing[0]["dur"])
+        except (KeyError, ValueError):
+            pass  # live streams have no numeric length
     r1, r2, r3 = random.choices(STYLES, k=3)
     autoplay_label, autoplay_icon = await _autoplay_button_data(chat_id)
     buttons = [
