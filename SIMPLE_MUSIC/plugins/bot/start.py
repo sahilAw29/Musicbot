@@ -29,6 +29,7 @@ from SIMPLE_MUSIC.utils.database import (
 )
 from SIMPLE_MUSIC.utils.decorators.language import LanguageStart
 from SIMPLE_MUSIC.utils.formatters import get_readable_time
+from SIMPLE_MUSIC.utils.start_videos_db import random_start_media
 from SIMPLE_MUSIC.utils.inline import help_pannel_page1, private_panel, start_panel
 from strings import get_string
 
@@ -132,8 +133,21 @@ async def _upload_start_video(client, url, kwargs):
 
 
 async def send_start_media(client, chat_id, media, caption, reply_markup=None):
-    """Send START_IMG_URL whether it is a photo, video, or animation file-id."""
+    """Send START_IMG_URL whether it is a photo, video, or animation file-id.
+    `media` /addvideo wala dict bhi ho sakta hai (random_start_media se)."""
     kwargs = {"chat_id": chat_id, "caption": caption, "reply_markup": reply_markup}
+    if isinstance(media, dict):
+        kind, value = media.get("type"), media.get("media")
+        try:
+            if kind == "video":
+                return await client.send_video(video=value, **kwargs)
+            if kind == "animation":
+                return await client.send_animation(animation=value, **kwargs)
+        except Exception as error:
+            LOGGER(__name__).warning(f"/start saved {kind} failed: {error}")
+            media = config.START_IMG_URL
+        else:
+            media = value  # "url" type: neeche wala normal URL flow
     file_id = START_MEDIA_FILE_IDS.get(media)
     if file_id:
         try:
@@ -189,7 +203,7 @@ async def start_pm(client, message: Message):
         if name.startswith("help"):
             keyboard = help_pannel_page1(_)
             await send_start_media(
-                client, message.chat.id, config.START_IMG_URL,
+                client, message.chat.id, await random_start_media(),
                 _['help_1'].format(config.SUPPORT_CHAT), keyboard,
             )
         elif name.startswith("sud"):
@@ -252,7 +266,7 @@ async def start_pm(client, message: Message):
 
         out = private_panel(_)
         await send_start_media(
-            client, message.chat.id, config.START_IMG_URL,
+            client, message.chat.id, await random_start_media(),
             _['start_2'].format(message.from_user.mention, app.mention, "Mina 0.5s", "0.2 GB", "1.2%", "14%", "<emoji id='5258203794772085854'>⚡</emoji> Fast", "<emoji id='6086954744268460848'>🔥</emoji> Active", app.username),
             InlineKeyboardMarkup(out),
         )
@@ -283,7 +297,7 @@ async def start_gp(client, message: Message, _):
     out = start_panel(_)
     uptime = int(time.time() - _boot_)
     await send_start_media(
-        client, message.chat.id, config.START_IMG_URL,
+        client, message.chat.id, await random_start_media(),
         _['start_1'].format(app.mention, get_readable_time(uptime)),
         InlineKeyboardMarkup(out),
     )
@@ -318,7 +332,7 @@ async def welcome(client, message: Message):
                 out = start_panel(_)
                 welcome_text = f"🩷 Wᴇʟᴄᴏᴍᴇ Bᴀʙʏ ꨄ {message.from_user.mention} 🥳"
                 await send_start_media(
-                    client, message.chat.id, config.START_IMG_URL,
+                    client, message.chat.id, await random_start_media(),
                     welcome_text, InlineKeyboardMarkup(out),
                 )
                 asyncio.create_task(add_served_chat(message.chat.id))
