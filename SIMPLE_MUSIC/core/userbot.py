@@ -60,11 +60,7 @@ class Userbot(Client):
         LOGGER(__name__).info(f"Starting Assistants...")
         if config.STRING1:
             await self.one.start()
-            try:
-                await self.one.join_chat("The_LuckyX")
-                await self.one.join_chat("music_Bot_Adda")
-            except:
-                pass
+            # auto-join channels hata diye gaye
             assistants.append(1)
             try:
                 await self.one.send_message(config.LOGGER_ID, "Assistant Started")
@@ -80,11 +76,7 @@ class Userbot(Client):
 
         if config.STRING2:
             await self.two.start()
-            try:
-                await self.two.join_chat("The_LuckyX")
-                await self.one.join_chat("music_Bot_Adda")
-            except:
-                pass
+            # auto-join channels hata diye gaye
             assistants.append(2)
             try:
                 await self.two.send_message(config.LOGGER_ID, "Assistant Started")
@@ -100,11 +92,7 @@ class Userbot(Client):
 
         if config.STRING3:
             await self.three.start()
-            try:
-                await self.three.join_chat("The_LuckyX")
-                await self.one.join_chat("music_Bot_Adda")
-            except:
-                pass
+            # auto-join channels hata diye gaye
             assistants.append(3)
             try:
                 await self.three.send_message(config.LOGGER_ID, "Assistant Started")
@@ -120,11 +108,7 @@ class Userbot(Client):
 
         if config.STRING4:
             await self.four.start()
-            try:
-                await self.four.join_chat("The_LuckyX")
-                await self.one.join_chat("music_Bot_Adda")
-            except:
-                pass
+            # auto-join channels hata diye gaye
             assistants.append(4)
             try:
                 await self.four.send_message(config.LOGGER_ID, "Assistant Started")
@@ -140,11 +124,7 @@ class Userbot(Client):
 
         if config.STRING5:
             await self.five.start()
-            try:
-                await self.five.join_chat("music_Bot_Adda")
-                await self.one.join_chat("The_LuckyX")
-            except:
-                pass
+            # auto-join channels hata diye gaye
             assistants.append(5)
             try:
                 await self.five.send_message(config.LOGGER_ID, "Assistant Started")

@@ -18,7 +18,7 @@ from SIMPLE_MUSIC import app
 
 #--------------------------
 
-MUST_JOIN = "The_LuckyX"
+MUST_JOIN = ""  # must-join band hai. Wapas chalu karna ho to yahan channel username daalo
 #------------------------
 @app.on_message(filters.incoming & filters.private, group=-1)
 async def must_join_channel(app: Client, msg: Message):
@@ -33,19 +33,22 @@ async def must_join_channel(app: Client, msg: Message):
             else:
                 chat_info = await app.get_chat(MUST_JOIN)
                 link = chat_info.invite_link
+            text = f"๏ ᴀᴄᴄᴏʀᴅɪɴɢ ᴛᴏ ᴍʏ ᴅᴀᴛᴀʙᴀsᴇ ʏᴏᴜ'ᴠᴇ ɴᴏᴛ ᴊᴏɪɴᴇᴅ [๏sᴜᴘᴘᴏʀᴛ๏]({link}) ʏᴇᴛ, ɪғ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ᴜsᴇ ᴍᴇ ᴛʜᴇɴ ᴊᴏɪɴ [๏sᴜᴘᴘᴏʀᴛ๏]({link}) ᴀɴᴅ sᴛᴀʀᴛ ᴍᴇ ᴀɢᴀɪɴ ! "
+            markup = InlineKeyboardMarkup([[InlineKeyboardButton("๏Jᴏɪɴ๏", url=link)]])
             try:
-                await msg.reply_photo(
-                    photo="https://telegra.ph/file/d24262661dda3f1832290.jpg", caption=f"๏ ᴀᴄᴄᴏʀᴅɪɴɢ ᴛᴏ ᴍʏ ᴅᴀᴛᴀʙᴀsᴇ ʏᴏᴜ'ᴠᴇ ɴᴏᴛ ᴊᴏɪɴᴇᴅ [๏sᴜᴘᴘᴏʀᴛ๏]({link}) ʏᴇᴛ, ɪғ ʏᴏᴜ ᴡᴀɴᴛ ᴛᴏ ᴜsᴇ ᴍᴇ ᴛʜᴇɴ ᴊᴏɪɴ [๏sᴜᴘᴘᴏʀᴛ๏]({link}) ᴀɴᴅ sᴛᴀʀᴛ ᴍᴇ ᴀɢᴀɪɴ ! ",
-                    reply_markup=InlineKeyboardMarkup(
-                        [
-                            [
-                                InlineKeyboardButton("๏Jᴏɪɴ๏", url=link),
-                            ]
-                        ]
+                try:
+                    await msg.reply_photo(
+                        photo="https://telegra.ph/file/d24262661dda3f1832290.jpg",
+                        caption=text,
+                        reply_markup=markup,
                     )
-                )
-                await msg.stop_propagation()
+                except ChatWriteForbidden:
+                    raise
+                except Exception:
+                    # photo link dead ho to text bhejo
+                    await msg.reply_text(text, reply_markup=markup, disable_web_page_preview=True)
             except ChatWriteForbidden:
                 pass
+            await msg.stop_propagation()
     except ChatAdminRequired:
         print(f"๏ᴘʀᴏᴍᴏᴛᴇ ᴍᴇ ᴀs ᴀɴ ᴀᴅᴍɪɴ ɪɴ ᴛʜᴇ ᴍᴜsᴛ_Jᴏɪɴ ᴄʜᴀᴛ ๏: {MUST_JOIN} !")

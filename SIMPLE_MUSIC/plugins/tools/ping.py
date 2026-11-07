@@ -40,17 +40,26 @@ def _get_style(style_val):
 @language
 async def ping_com(client, message: Message, _):
     start = datetime.now()
-    response = await message.reply_photo(
-        config.PING_IMG_URL,
-        caption=_["ping_1"].format(app.mention),
-    )
-    pytgping = await SIMPLE.ping()
+    is_photo = True
+    try:
+        response = await message.reply_photo(
+            config.PING_IMG_URL,
+            caption=_["ping_1"].format(app.mention),
+        )
+    except Exception:
+        # PING_IMG_URL kharab ho to text se ping bhejo
+        is_photo = False
+        response = await message.reply_text(_["ping_1"].format(app.mention))
+    try:
+        pytgping = await SIMPLE.ping()
+    except Exception:
+        pytgping = "N/A"
     UP, CPU, RAM, DISK = await bot_sys_stats()
     resp = (datetime.now() - start).microseconds / 1000
-    
-    # Note: supp_markup is imported. You may need to add the color logic inside 
-    # Yoru Music Bot.utils.inline.supp_markup to apply it to the ping buttons.
-    await response.edit_text(
-        _["ping_2"].format(resp, app.mention, UP, RAM, CPU, DISK, pytgping),
-        reply_markup=supp_markup(_),
-    )
+    text = _["ping_2"].format(resp, app.mention, UP, RAM, CPU, DISK, pytgping)
+
+    # Photo wale message par edit_text nahi chalta, caption edit karna padta hai
+    if is_photo:
+        await response.edit_caption(text, reply_markup=supp_markup(_))
+    else:
+        await response.edit_text(text, reply_markup=supp_markup(_))

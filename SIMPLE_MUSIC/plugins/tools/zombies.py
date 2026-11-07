@@ -139,7 +139,7 @@ async def execute_zombie_cleanup(_: Client, cq: CallbackQuery):
 async def cancel_zombie_cleanup(_: Client, cq: CallbackQuery):
     await cq.edit_message_text("❌ | <b>Cleanup cancelled.</b>")
 
-@app.on_message(filters.command(["admins", "staff"]))
+@app.on_message(filters.command(["staff", "adminlist"]))
 async def list_admins(_: Client, message: Message):
     try:
         owners, admins = [], []

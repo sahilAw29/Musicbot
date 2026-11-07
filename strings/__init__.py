@@ -13,7 +13,7 @@ def get_string(lang: str):
 
 # Shown in its own blockquote under every "now playing" card.
 CARD_CREDIT = (
-    "\n<blockquote><b><emoji id='5411125521230620410'>🎁</emoji> Mᴀᴅᴇ Bʏ : "
+    "\n<blockquote><b><emoji id='5411125521230620410'>🎁</emoji> Mᴀᴅᴇ Bʏ Hᴇʀ : "
     "<a href=\"https://t.me/flirts_x\">⏤͟͟͞͞𝗦ᴀ𝗛ɪ𝗟</a> "
     "<emoji id='5384488237140057287'>✨</emoji></b></blockquote>"
 )

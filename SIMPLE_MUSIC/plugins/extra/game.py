@@ -45,7 +45,10 @@ async def game_command(_, message: Message):
         await message.reply_text(caption, reply_markup=_game_markup(message))
 
 
-@app.on_message(filters.private)
+_web_app_data = filters.create(lambda _, __, m: bool(getattr(m, "web_app_data", None)))
+
+
+@app.on_message(filters.private & _web_app_data)
 async def subway_survival_report(_, message: Message):
     if not message.web_app_data:
         return

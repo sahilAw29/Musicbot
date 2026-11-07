@@ -12,6 +12,7 @@ import config
 from SIMPLE_MUSIC import app
 from SIMPLE_MUSIC.plugins.extra.waifu_catch import try_handle_spawn_reply
 from SIMPLE_MUSIC.utils.Simple_font import Fonts
+from SIMPLE_MUSIC.utils.ai_toggle_db import is_ai_on
 
 AI_ENDPOINT = "https://r-bots-free-apis.co08.art/api/gptlogic"
 _conversation_history = defaultdict(lambda: deque(maxlen=6))
@@ -121,7 +122,7 @@ async def _reply_yoru(message: Message, question: str):
     history.append(("User", question))
     history.append((_configured_name(), answer))
     if _owner_question(question):
-        answer = f"Mere owner hain {_owner_mention()} — wahi mujhe manage karte hain.\n\n{answer}"
+        answer = f"Mere owner hain {await _owner_mention()} — wahi mujhe manage karte hain.\n\n{answer}"
     return await message.reply_text(_yoru_blockquote(answer))
 
 
@@ -143,6 +144,8 @@ async def _reply_random_pack_sticker(message: Message):
 
 @app.on_message(filters.command(["ask", "chatgpt", "yoru"]))
 async def yoru_ai(_, message: Message):
+    if not await is_ai_on(message.chat.id):  # /ai off → bilkul chup
+        return
     question = " ".join(message.command[1:]).strip() if message.command else ""
     if not question and message.reply_to_message:
         question = (
@@ -155,7 +158,7 @@ async def yoru_ai(_, message: Message):
 
 @app.on_message(
     filters.reply
-    & ~filters.command(["ask", "chatgpt", "yoru", "guess", "grab", "catch", "collect"]),
+    & ~filters.command(["ask", "chatgpt", "yoru", "guess", "grab", "catch", "collect", "ai", "chatbot"]),
     group=6,
 )
 async def yoru_reply_chat(_, message: Message):
@@ -167,6 +170,8 @@ async def yoru_reply_chat(_, message: Message):
     if replied.from_user.id != me.id:
         return
     if await try_handle_spawn_reply(message):
+        return
+    if not await is_ai_on(message.chat.id):  # /ai off kiya hua hai
         return
     if message.sticker:
         return await _reply_random_pack_sticker(message)

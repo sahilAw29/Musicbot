@@ -7,6 +7,7 @@ from pyrogram.types import Message
 
 import config
 from SIMPLE_MUSIC import app
+from SIMPLE_MUSIC.utils.ai_toggle_db import is_ai_on
 
 AI_ENDPOINT = "https://r-bots-free-apis.co08.art/api/gptlogic"
 
@@ -58,6 +59,8 @@ async def _ask_aaliya(question: str):
 
 @app.on_message(filters.command(["ask", "chatgpt", "aaliya"]))
 async def aaliya_ai(_, message: Message):
+    if not await is_ai_on(message.chat.id):  # /ai off → bilkul chup
+        return
     question = " ".join(message.command[1:]).strip() if message.command else ""
     if not question and message.reply_to_message:
         question = (

@@ -1,13 +1,16 @@
 # -----------------------------------------------
 # /start random video — owner/sudo commands
 #
-#  /addvideo        → kisi video/GIF par reply karke bhejo (ya /addvideo <link>)
+#  /addvideo        → kisi bhi video/GIF/video-file par reply karke bhejo
+#                     (ya video ke caption me /addvideo, ya /addvideo <link>)
 #  /delvideo 2      → list ka 2 number wala video delete
 #  /delvideo        → kisi saved video par reply karke bhi delete hota hai
 #  /delvideo all    → saare video delete (fir START_IMG_URL wapas chalega)
 #  /startvideos     → saare saved video ki list
 #  /showvideo 2     → 2 number wala video dekh lo
 # -----------------------------------------------
+import os
+
 from pyrogram import filters
 from pyrogram.types import Message
 
@@ -22,7 +25,7 @@ from SIMPLE_MUSIC.utils.start_videos_db import (
 
 
 def _media_of(msg: Message):
-    """(unique_key, file_id, type) ya None."""
+    """Saved-ready media: (unique_key, file_id, type) ya None."""
     if not msg:
         return None
     if msg.video:
@@ -32,24 +35,69 @@ def _media_of(msg: Message):
     return None
 
 
-@app.on_message(filters.command(["addvideo", "addstartvideo"]) & SUDOERS)
-async def add_video_cmd(_, message: Message):
-    found = _media_of(message.reply_to_message)
+def _needs_convert(msg: Message):
+    """Video file (document) ya round video — inko pehle normal video banana padega."""
+    if not msg:
+        return None
+    doc = msg.document
+    if doc and (
+        (doc.mime_type or "").startswith("video/")
+        or (doc.file_name or "").lower().endswith((".mp4", ".mkv", ".mov", ".webm", ".avi", ".m4v"))
+    ):
+        return doc.file_unique_id
+    if msg.video_note:
+        return msg.video_note.file_unique_id
+    return None
 
-    if not found and len(message.command) > 1:
-        link = message.text.split(None, 1)[1].strip()
+
+async def _convert_to_video(client, message: Message, source: Message):
+    """File ko download karke normal video ki tarah dobara upload karo."""
+    status = await message.reply_text("⏳ ᴠɪᴅᴇᴏ ʀᴇᴀᴅʏ ᴋᴀʀ ʀᴀʜᴀ ʜᴏᴏɴ...")
+    path = None
+    try:
+        path = await source.download()
+        sent = await client.send_video(message.chat.id, path, caption="✅ /start ᴠɪᴅᴇᴏ", supports_streaming=True)
+        return sent.video.file_unique_id, sent.video.file_id, "video"
+    finally:
+        try:
+            await status.delete()
+        except Exception:
+            pass
+        if path:
+            try:
+                os.remove(path)
+            except Exception:
+                pass
+
+
+# Kaam karne ke 3 tareeke:
+#  1) kisi video/GIF/video-file par reply karke /addvideo
+#  2) video bhejte waqt caption me /addvideo likh do
+#  3) /addvideo <direct link>
+@app.on_message(filters.command(["addvideo", "addstartvideo"]) & SUDOERS, group=-2)
+async def add_video_cmd(client, message: Message):
+    source = message.reply_to_message
+    found = _media_of(source) or _media_of(message)
+    if not found:
+        if not _needs_convert(source) and _needs_convert(message):
+            source = message
+        if _needs_convert(source):
+            try:
+                found = await _convert_to_video(client, message, source)
+            except Exception as e:
+                return await message.reply_text(f"❖ ᴠɪᴅᴇᴏ ᴀᴅᴅ ɴᴀʜɪ ʜᴜᴀ : <code>{e}</code>")
+
+    text = message.text or message.caption or ""
+    if not found and len(text.split()) > 1:
+        link = text.split(None, 1)[1].strip()
         if link.startswith("http"):
             found = link, link, "url"
 
     if not found:
-        if message.reply_to_message and message.reply_to_message.document:
-            return await message.reply_text(
-                "❖ ʏᴇ ғɪʟᴇ ʜᴀɪ, ᴠɪᴅᴇᴏ ɴᴀʜɪ.\nᴠɪᴅᴇᴏ ᴋᴏ ɴᴏʀᴍᴀʟ ᴠɪᴅᴇᴏ ᴋɪ ᴛᴀʀᴀʜ ʙʜᴇᴊᴏ (ғɪʟᴇ ᴍᴀᴛ ʙɴᴀᴏ), ғɪʀ ʀᴇᴘʟʏ ᴋᴀʀᴏ."
-            )
         return await message.reply_text(
-            "❖ <b>ᴜsᴀɢᴇ :</b>\n"
-            "• ᴋɪsɪ ᴠɪᴅᴇᴏ/ɢɪғ ᴘᴀʀ ʀᴇᴘʟʏ ᴋᴀʀᴋᴇ <code>/addvideo</code>\n"
-            "• ʏᴀ <code>/addvideo https://files.catbox.moe/xyz.mp4</code>"
+            "❖ <b>ᴠɪᴅᴇᴏ ᴋᴀɪsᴇ ᴀᴅᴅ ᴋᴀʀᴇɪɴ :</b>\n"
+            "• ᴋɪsɪ ʙʜɪ ᴠɪᴅᴇᴏ / ɢɪғ / ᴠɪᴅᴇᴏ ғɪʟᴇ ᴘᴀʀ ʀᴇᴘʟʏ ᴋᴀʀᴋᴇ <code>/addvideo</code>\n"
+            "• ʏᴀ ᴠɪᴅᴇᴏ ᴋᴇ ᴄᴀᴘᴛɪᴏɴ ᴍᴇ <code>/addvideo</code> ʟɪᴋʜᴋᴇ ʙʜᴇᴊᴏ"
         )
 
     key, media, kind = found
@@ -63,7 +111,7 @@ async def add_video_cmd(_, message: Message):
     )
 
 
-@app.on_message(filters.command(["delvideo", "delstartvideo", "rmvideo"]) & SUDOERS)
+@app.on_message(filters.command(["delvideo", "delstartvideo", "rmvideo"]) & SUDOERS, group=-2)
 async def del_video_cmd(_, message: Message):
     videos = await get_start_videos()
     if not videos:
@@ -98,7 +146,7 @@ async def del_video_cmd(_, message: Message):
     await message.reply_text(f"🗑 ᴠɪᴅᴇᴏ ɴᴏ. {arg} ᴅᴇʟᴇᴛᴇ ʜᴏ ɢᴀʏᴀ.\n๏ ʙᴀᴄʜᴇ ᴠɪᴅᴇᴏs : <code>{left}</code>")
 
 
-@app.on_message(filters.command(["startvideos", "videolist"]) & SUDOERS)
+@app.on_message(filters.command(["startvideos", "startsvideos", "startvideo", "startsvideo", "videolist", "videos", "svideos"]) & SUDOERS, group=-2)
 async def list_videos_cmd(_, message: Message):
     videos = await get_start_videos()
     if not videos:
@@ -113,7 +161,7 @@ async def list_videos_cmd(_, message: Message):
     await message.reply_text("\n".join(lines), disable_web_page_preview=True)
 
 
-@app.on_message(filters.command(["showvideo"]) & SUDOERS)
+@app.on_message(filters.command(["showvideo"]) & SUDOERS, group=-2)
 async def show_video_cmd(client, message: Message):
     videos = await get_start_videos()
     if len(message.command) < 2 or not message.command[1].isdigit() or not 1 <= int(message.command[1]) <= len(videos):

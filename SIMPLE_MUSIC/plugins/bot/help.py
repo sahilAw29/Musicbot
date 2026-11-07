@@ -49,11 +49,19 @@ async def helper_private(
         language = await get_lang(update.chat.id)
         _ = get_string(language)
         keyboard = help_pannel_page1(_)
-        await update.reply_photo(
-            config.HELP_IMG_URL,
-            caption=_["help_1"].format(SUPPORT_CHAT),
-            reply_markup=keyboard,
-        )
+        try:
+            await update.reply_photo(
+                config.HELP_IMG_URL,
+                caption=_["help_1"].format(SUPPORT_CHAT),
+                reply_markup=keyboard,
+            )
+        except Exception:
+            # HELP_IMG_URL kharab ho to bhi /help chale
+            await update.reply_text(
+                _["help_1"].format(SUPPORT_CHAT),
+                reply_markup=keyboard,
+                disable_web_page_preview=True,
+            )
 
 
 @app.on_message(filters.command(["help"]) & filters.group & ~BANNED_USERS)

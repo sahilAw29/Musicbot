@@ -135,7 +135,8 @@ async def _upload_start_video(client, url, kwargs):
 async def send_start_media(client, chat_id, media, caption, reply_markup=None):
     """Send START_IMG_URL whether it is a photo, video, or animation file-id.
     `media` /addvideo wala dict bhi ho sakta hai (random_start_media se)."""
-    kwargs = {"chat_id": chat_id, "caption": caption, "reply_markup": reply_markup}
+    # has_spoiler=True → /start ka video/photo blur (spoiler) me aata hai, tap karke dikhta hai
+    kwargs = {"chat_id": chat_id, "caption": caption, "reply_markup": reply_markup, "has_spoiler": True}
     if isinstance(media, dict):
         kind, value = media.get("type"), media.get("media")
         try:

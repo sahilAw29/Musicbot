@@ -39,7 +39,7 @@ BOT_LIST = ["StrangerSuperbot", "zmnrobot", "SapnaMusicRobot", "ITZ_MERADHIKABOT
 
 @app.on_message(filters.command("botschk") & filters.user(OWNER_ID))
 async def bots_chk(_, message):
-    msg = await message.reply_photo(photo="https://telegra.ph/file/4d303296e4fac9a40ea07.jpg", caption="<b>ᴄʜᴇᴄᴋɪɴɢ ʙᴏᴛs sᴛᴀᴛs ᴀʟɪᴠᴇ ᴏʀ ᴅᴇᴀᴅ...</b>")
+    msg = await message.reply_text("<b>ᴄʜᴇᴄᴋɪɴɢ ʙᴏᴛs sᴛᴀᴛs ᴀʟɪᴠᴇ ᴏʀ ᴅᴇᴀᴅ...</b>")
     response = "<b>ᴄʜᴇᴄᴋɪɴɢ ʙᴏᴛs sᴛᴀᴛs ᴀʟɪᴠᴇ ᴏʀ ᴅᴇᴀᴅ</b>\n\n"
     for bot_username in BOT_LIST:
         try:
