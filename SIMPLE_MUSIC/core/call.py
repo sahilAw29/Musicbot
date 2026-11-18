@@ -70,7 +70,7 @@ class Call(PyTgCalls):
             api_hash=config.API_HASH,
             session_string=str(config.STRING1),
         )
-        self.one = PyTgCalls(self.userbot1, cache_duration=100)
+        self.one = PyTgCalls(self.userbot1)
 
         self.userbot2 = Client(
             name="SIMPLEAss2",
@@ -78,7 +78,7 @@ class Call(PyTgCalls):
             api_hash=config.API_HASH,
             session_string=str(config.STRING2),
         )
-        self.two = PyTgCalls(self.userbot2, cache_duration=100)
+        self.two = PyTgCalls(self.userbot2)
 
         self.userbot3 = Client(
             name="SIMPLEAss3",
@@ -86,7 +86,7 @@ class Call(PyTgCalls):
             api_hash=config.API_HASH,
             session_string=str(config.STRING3),
         )
-        self.three = PyTgCalls(self.userbot3, cache_duration=100)
+        self.three = PyTgCalls(self.userbot3)
 
         self.userbot4 = Client(
             name="SIMPLEAss4",
@@ -94,7 +94,7 @@ class Call(PyTgCalls):
             api_hash=config.API_HASH,
             session_string=str(config.STRING4),
         )
-        self.four = PyTgCalls(self.userbot4, cache_duration=100)
+        self.four = PyTgCalls(self.userbot4)
 
         self.userbot5 = Client(
             name="SIMPLEAss5",
@@ -102,7 +102,7 @@ class Call(PyTgCalls):
             api_hash=config.API_HASH,
             session_string=str(config.STRING5),
         )
-        self.five = PyTgCalls(self.userbot5, cache_duration=100)
+        self.five = PyTgCalls(self.userbot5)
 
     def _get_transition_lock(self, chat_id: int) -> asyncio.Lock:
         """Return the lock shared by manual and stream-ended transitions."""
