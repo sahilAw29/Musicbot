@@ -78,6 +78,11 @@ DURATION_LIMIT_MIN = int(getenv("DURATION_LIMIT", 17000))
 LOGGER_ID = int(getenv("LOGGER_ID", -1003511132444))
 OWNER_ID = int(getenv("OWNER_ID", 8335023642))
 
+# /admins panel + Clone Bot sirf .env ke OWNER_ID ke liye
+PANEL_ADMINS = [OWNER_ID]
+# Clone bot process me "1" hota hai (clone ke andar Clone Bot option nahi dikhta)
+IS_CLONE_BOT = getenv("IS_CLONE_BOT", "") == "1"
+
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # ❖ ʜ ᴇ ʀ ᴏ ᴋ ᴜ   s ᴇ ᴛ ᴛ ɪ ɴ ɢ s ❖

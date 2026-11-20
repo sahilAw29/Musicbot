@@ -23,7 +23,7 @@ from SIMPLE_MUSIC.utils.fancy_buttons import (
 )
 import config
 
-# ⏤͟͞Nᴀᴢᴀʀɪʏᴀ ꭙ Mᴜꜱɪᴄ wala style
+# ⏤͟͞Nᴀᴢᴀʀɪʏᴀ Mᴜꜱɪᴄ wala style
 _SMALL = dict(zip(
     "abcdefghijklmnopqrstuvwxyz",
     "ᴀʙᴄᴅᴇꜰɢʜɪᴊᴋʟᴍɴᴏᴘǫʀꜱᴛᴜᴠᴡxʏᴢ",
@@ -81,7 +81,7 @@ def _to_plain(text: str) -> str:
 
 
 def nazariya_style(text: str) -> str:
-    """Har word ka pehla letter capital, baaki small caps, words ke beech ꭙ.
+    """Har word ka pehla letter capital, baaki small caps (words ke beech ꭙ nahi).
     Koi bhi font me likha ho (𝐁𝐨𝐥𝐝, Ⓒⓘⓡⓒⓛⓔ, ꜱᴍᴀʟʟ ᴄᴀᴘꜱ...), pehle normal karke phir style lagta hai."""
     text = _to_plain(text)
     out_lines = []
@@ -90,7 +90,7 @@ def nazariya_style(text: str) -> str:
         for word in line.split():
             first, rest = word[0], word[1:]
             words.append(first.upper() + "".join(_SMALL.get(ch, ch) for ch in rest.lower()))
-        out_lines.append(" ꭙ ".join(words))
+        out_lines.append(" ".join(words))
     return "⏤͟͞" + "\n".join(out_lines)
 
 
@@ -172,7 +172,7 @@ async def style_buttons(c, m, cb=False):
         if not text:
             return await m.reply_text("❖ ᴜsᴀɢᴇ : <code>/font Your Text</code>\nʏᴀ ᴋɪsɪ ᴛᴇxᴛ ᴘᴀʀ ʀᴇᴘʟʏ ᴋᴀʀᴋᴇ /font")
     buttons = [
-        [InlineKeyboardButton("⏤͟͞Sᴛʏʟɪꜱʜ ꭙ Fᴏɴᴛ", callback_data="style+nazariya")],
+        [InlineKeyboardButton("⏤͟͞Sᴛʏʟɪꜱʜ Fᴏɴᴛ", callback_data="style+nazariya")],
         [
             InlineKeyboardButton("𝚃𝚢𝚙𝚎𝚠𝚛𝚒𝚝𝚎𝚛", callback_data="style+typewriter"),
             InlineKeyboardButton("𝕆𝕦𝕥𝕝𝕚𝕟𝕖", callback_data="style+outline"),
@@ -211,7 +211,7 @@ async def style_buttons(c, m, cb=False):
         [InlineKeyboardButton ("ᴄʟᴏsᴇ",callback_data="close_reply", **_close_icon()),InlineKeyboardButton ("ɴᴇxᴛ ➻", callback_data="nxt")],
     ]
     if not cb:
-        # pehli baar hi ⏤͟͞Nᴀᴍᴇ ꭙ Sᴛʏʟᴇ wala font dikhao
+        # pehli baar hi ⏤͟͞Nᴀᴍᴇ Sᴛʏʟᴇ wala font dikhao
         styled = nazariya_style(text)
         sent, last_error = None, None
         # 1) normal  2) bina custom-emoji icon  3) sabse simple — jo chal jaye

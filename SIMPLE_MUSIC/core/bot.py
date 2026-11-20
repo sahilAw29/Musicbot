@@ -48,6 +48,11 @@ class SIMPLE(Client):
         self.username = self.me.username
         self.mention = self.me.mention
 
+        if getattr(config, "IS_CLONE_BOT", False):
+            # clone bot ko log group ki zaroorat nahi — seedha chalu
+            LOGGER(__name__).info(f"Clone Bot Started as {self.name}")
+            return
+
         try:
             await self.send_message(
                 chat_id=config.LOGGER_ID,
