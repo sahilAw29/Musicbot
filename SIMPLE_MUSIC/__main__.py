@@ -93,6 +93,11 @@ async def init():
     except:
         pass
 
+    if getattr(config, "IS_CLONE_BOT", False):
+        # main bot ke saved file_id (photo/video/sticker) clone me bhi chale
+        from SIMPLE_MUSIC.utils.clone_media import install_clone_patches
+        install_clone_patches(app)
+
     await app.start()
     
     await setup_bot_commands()
