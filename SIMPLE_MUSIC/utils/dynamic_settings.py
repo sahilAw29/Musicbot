@@ -54,6 +54,11 @@ async def set_setting(key: str, value):
         {"_id": key}, {"$set": {"value": value, "env": getenv(key)}}, upsert=True
     )
     setattr(config, key, value)
+    try:
+        from SIMPLE_MUSIC.utils.clone_media import trigger_export
+        trigger_export()  # clone bots ke liye disk par copy
+    except Exception:
+        pass
 
 
 async def load_overrides():

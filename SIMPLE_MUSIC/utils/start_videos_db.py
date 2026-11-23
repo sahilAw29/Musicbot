@@ -37,6 +37,11 @@ async def add_start_video(key: str, media: str, kind: str, added_by: int) -> boo
     }
     await startvideosdb.insert_one(doc)
     _cache = None
+    try:
+        from SIMPLE_MUSIC.utils.clone_media import trigger_export
+        trigger_export()  # clone bots ke liye disk par copy
+    except Exception:
+        pass
     return True
 
 

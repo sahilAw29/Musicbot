@@ -105,6 +105,18 @@ async def init():
     )
 
     await userbot.start()
+    if getattr(config, "IS_CLONE_BOT", False):
+        # clone ka log group nahi hota, isliye assistant bot ko /start bhejta hai
+        # taaki bot assistant ko pehchaan le (warna /play me PEER_ID_INVALID)
+        for ub in (userbot.one, userbot.two, userbot.three, userbot.four, userbot.five):
+            if getattr(ub, "is_connected", False):
+                try:
+                    await ub.send_message(app.username, "/start")
+                except Exception as e:
+                    LOGGER("SIMPLE_MUSIC").warning(f"Assistant -> bot /start failed: {e}")
+        # main bot me jo naya save ho, wo clone me bhi aaye
+        from SIMPLE_MUSIC.utils.clone_media import clone_sync_loop
+        asyncio.get_event_loop().create_task(clone_sync_loop())
     await SIMPLE.start()
 
     try:

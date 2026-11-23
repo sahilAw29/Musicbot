@@ -84,6 +84,21 @@ def _main_strings():
     return {s for s in (getattr(config, f"STRING{i}", None) for i in range(1, 8)) if s}
 
 
+# ───────────────────── start media clones ke liye ─────────────────────
+from SIMPLE_MUSIC.utils.clone_media import export_media
+
+
+async def _export_loop():
+    """Clones hain to har 2 min me naya saved media disk par (clone wahan se upload karega)."""
+    while True:
+        await asyncio.sleep(120)
+        try:
+            if await _col().count_documents({}):
+                await export_media()
+        except Exception as e:
+            log.warning(f"clone media export failed: {e}")
+
+
 # ───────────────────── process ─────────────────────
 def _log_path(bot_id):
     return os.path.join(LOG_DIR, f"{bot_id}.log")
@@ -103,6 +118,10 @@ async def _spawn(doc):
     if old and old.returncode is None:
         return old
     os.makedirs(LOG_DIR, exist_ok=True)
+    try:
+        await asyncio.wait_for(export_media(), 300)
+    except Exception as e:
+        log.warning(f"clone media export failed: {e}")
     env = os.environ.copy()
     env.update({
         "BOT_TOKEN": doc["token"],
@@ -337,5 +356,6 @@ if not config.IS_CLONE_BOT:
 
     try:
         asyncio.get_event_loop().create_task(_autostart())
+        asyncio.get_event_loop().create_task(_export_loop())
     except Exception as e:
         log.error(f"Clone autostart schedule failed: {e}")

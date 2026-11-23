@@ -29,6 +29,10 @@ class SIMPLE(Client):
             max_concurrent_transmissions=7,
             parse_mode=ParseMode.HTML,
         )
+        if getattr(config, "IS_CLONE_BOT", False):
+            # main bot ke saved file_id (photo/video/sticker) clone me bhi chale
+            from SIMPLE_MUSIC.utils.clone_media import install_clone_patches
+            install_clone_patches(self)
 
     async def start(self):
         # Retry on FloodWait (too many redeploys can trigger Telegram rate limit)

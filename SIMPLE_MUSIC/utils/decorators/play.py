@@ -36,6 +36,27 @@ from SIMPLE_MUSIC.utils.inline import botplaylist_markup
 import config
 from config import SUPPORT_CHAT, adminlist
 from strings import get_string
+from pyrogram.errors import PeerIdInvalid
+
+
+async def _assistant_member(chat_id, userbot):
+    """Bot ko assistant ka peer pata na ho (clone bot) to assistant bot ko /start bhejta hai,
+    taaki bot use pehchaan le, phir dobara check."""
+    try:
+        return await app.get_chat_member(chat_id, userbot.id)
+    except PeerIdInvalid:
+        pass
+    if getattr(userbot, "username", None):
+        try:
+            return await app.get_chat_member(chat_id, userbot.username)
+        except PeerIdInvalid:
+            pass
+    try:
+        await userbot.send_message(app.username, "/start")
+        await asyncio.sleep(2)
+    except Exception:
+        pass
+    return await app.get_chat_member(chat_id, userbot.id)
 
 links = {}
 
@@ -130,7 +151,7 @@ def PlayWrapper(command):
             userbot = await get_assistant(chat_id)
             try:
                 try:
-                    get = await app.get_chat_member(chat_id, userbot.id)
+                    get = await _assistant_member(chat_id, userbot)
                 except ChatAdminRequired:
                     return await message.reply_text(_["call_1"])
                 if (
