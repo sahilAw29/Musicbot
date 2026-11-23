@@ -19,6 +19,7 @@ MEDIA_DIR = os.path.join(ROOT_DIR, "clone_media")
 
 _CLONE_IDS = {}       # main bot file_id -> clone bot ka apna file_id
 _export_lock = None
+_FAILED = {}          # file_id -> time (fail hua to 1 ghante tak dobara try nahi)
 
 
 def _dir(file_id: str) -> str:
@@ -86,17 +87,31 @@ async def export_media():
     if _export_lock.locked():
         return
     async with _export_lock:
+        import time
+        import config
         from SIMPLE_MUSIC import LOGGER, app
         os.makedirs(MEDIA_DIR, exist_ok=True)
         for fid in await _collect_ids():
-            if local_media(fid):
+            if local_media(fid) or time.time() - _FAILED.get(fid, 0) < 3600:
                 continue
             d = _dir(fid)
             os.makedirs(d, exist_ok=True)
+            sent = None
             try:
-                await app.download_media(fid, file_name=d + "/")
+                # Seedha file_id se download karne par FILE_REFERENCE_EXPIRED aata hai.
+                # Isliye pehle log group me bhejo (fresh reference milta hai), download karo, phir delete.
+                sent = await app.send_cached_media(config.LOGGER_ID, fid, disable_notification=True)
+                await app.download_media(sent, file_name=d + "/")
+                _FAILED.pop(fid, None)
             except Exception as e:
-                LOGGER(__name__).warning(f"clone media download failed ({file_kind(fid)}): {e}")
+                _FAILED[fid] = time.time()
+                LOGGER(__name__).warning(f"clone media copy failed ({file_kind(fid)}): {e}")
+            finally:
+                if sent is not None:
+                    try:
+                        await sent.delete()
+                    except Exception:
+                        pass
 
 
 def trigger_export():

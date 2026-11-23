@@ -30,6 +30,7 @@ TOKEN_RE = re.compile(r"^\d{6,}:[A-Za-z0-9_-]{30,}$")
 _RUNNING = {}     # bot_id -> asyncio Process
 _STOPPING = set() # bot_ids jinko jaan-boojh kar band kiya
 _pending = {}     # user_id -> {"step": "token"/"string", "token": ...}
+_FAILS = {}       # bot_id -> lagatar kitni baar start hote hi band hua
 
 
 # ───────────────────── clone ke andar: parent mare to clone bhi band ─────────────────────
@@ -56,28 +57,45 @@ async def _all_clones():
 
 
 # ───────────────────── checks ─────────────────────
+class _BotInfo:
+    def __init__(self, data):
+        self.id = data["id"]
+        self.username = data.get("username") or ""
+        self.first_name = data.get("first_name") or ""
+
+
 async def _check_token(token):
-    c = Client(f"clchk_{uuid.uuid4().hex[:8]}", api_id=config.API_ID, api_hash=config.API_HASH,
-               bot_token=token, in_memory=True, no_updates=True)
-    await asyncio.wait_for(c.start(), 60)
-    me = c.me
-    try:
-        await c.stop()
-    except Exception:
-        pass
-    return me
+    """Bot API (getMe) se check — naya MTProto login nahi karna padta, timeout nahi aata."""
+    import aiohttp
+    url = f"https://api.telegram.org/bot{token}/getMe"
+    last = None
+    for _ in range(3):
+        try:
+            async with aiohttp.ClientSession() as s:
+                async with s.get(url, timeout=aiohttp.ClientTimeout(total=20)) as r:
+                    data = await r.json(content_type=None)
+            if data.get("ok"):
+                return _BotInfo(data["result"])
+            raise ValueError(data.get("description") or "token galat hai ya revoke ho gaya")
+        except ValueError:
+            raise
+        except Exception as e:
+            last = e
+            await asyncio.sleep(3)
+    raise ValueError(f"Telegram se check nahi ho paya: {last}")
 
 
 async def _check_string(string):
     c = Client(f"clchk_{uuid.uuid4().hex[:8]}", api_id=config.API_ID, api_hash=config.API_HASH,
                session_string=string, in_memory=True, no_updates=True)
-    await asyncio.wait_for(c.start(), 60)
-    me = c.me
     try:
-        await c.stop()
-    except Exception:
-        pass
-    return me
+        await asyncio.wait_for(c.start(), 90)
+        return c.me
+    finally:
+        try:
+            await c.stop()
+        except Exception:
+            pass
 
 
 def _main_strings():
@@ -126,6 +144,7 @@ async def _spawn(doc):
     env.update({
         "BOT_TOKEN": doc["token"],
         "STRING_SESSION": doc["string"],
+        "CLONE_BOT_SESSION": doc.get("bot_session") or "",
         "BOT_USERNAME": doc.get("username") or "",
         "ASSUSERNAME": doc.get("ass_username") or "",
         "IS_CLONE_BOT": "1",
@@ -156,12 +175,23 @@ async def _watch(doc, proc, started):
     if bot_id in _STOPPING:
         return
     if time.time() - started < 120:
-        # shuru hote hi band ho gaya → galti hai, baar baar restart nahi karenge
+        # shuru hote hi band ho gaya → 3 baar ruk ke dobara try, phir band
+        fails = _FAILS.get(bot_id, 0) + 1
+        _FAILS[bot_id] = fails
+        if fails <= 3:
+            log.warning(f"Clone {bot_id} start failed (code {code}), {90 * fails}s baad retry {fails}/3")
+            await asyncio.sleep(90 * fails)
+            fresh = await _col().find_one({"bot_id": bot_id})
+            if fresh and fresh.get("enabled", True) and bot_id not in _STOPPING:
+                await _spawn(fresh)
+            return
+        _FAILS.pop(bot_id, None)
         await _col().update_one({"bot_id": bot_id}, {"$set": {"enabled": False}})
         await _notify(f"❌ <b>ᴄʟᴏɴᴇ @{doc.get('username')} ʙᴀɴᴅ ʜᴏ ɢᴀʏᴀ</b> (code {code})\n"
                       f"<pre>{_esc(_tail(bot_id))}</pre>\n"
                       f"/admins → ᴄʟᴏɴᴇ ʙᴏᴛ sᴇ ʀᴇsᴛᴀʀᴛ ᴋᴀʀ sᴀᴋᴛᴇ ʜᴏ.")
         return
+    _FAILS.pop(bot_id, None)
     log.warning(f"Clone {bot_id} crashed (code {code}), restarting in 15s")
     await asyncio.sleep(15)
     fresh = await _col().find_one({"bot_id": bot_id})
@@ -246,6 +276,7 @@ async def _do_clone(message: Message, token: str, string: str):
         "added_by": message.from_user.id,
         "added_on": int(time.time()),
         "enabled": True,
+        "bot_session": "",  # naya token → pehli baar fresh login
     }
     await _stop(bot_me.id)  # agar pehle se tha to naye token/string se dobara
     await _col().update_one({"bot_id": bot_me.id}, {"$set": doc}, upsert=True)
@@ -295,6 +326,7 @@ async def restart_clone(bot_id):
     d = await get_clone(bot_id)
     if not d:
         return None
+    _FAILS.pop(bot_id, None)
     await _stop(bot_id)
     d["enabled"] = True
     await _col().update_one({"bot_id": bot_id}, {"$set": {"enabled": True}})
@@ -352,7 +384,7 @@ if not config.IS_CLONE_BOT:
                     log.info(f"Clone @{d.get('username')} started")
                 except Exception as e:
                     log.error(f"Clone @{d.get('username')} start failed: {e}")
-                await asyncio.sleep(5)
+                await asyncio.sleep(20)  # ek saath saare login na ho
 
     try:
         asyncio.get_event_loop().create_task(_autostart())
