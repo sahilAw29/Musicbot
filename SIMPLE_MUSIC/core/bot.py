@@ -19,6 +19,30 @@ from pyrogram.enums import ChatMemberStatus, ParseMode
 import config
 from ..logging import LOGGER
 
+# ── pyrogram version me reply_text(quote=...) support nahi to bina quote ke bhejo ──
+import functools as _ft
+from pyrogram.types import Message as _Msg
+
+
+def _quote_safe(f):
+    @_ft.wraps(f)
+    async def w(self, *a, **k):
+        try:
+            return await f(self, *a, **k)
+        except TypeError as e:
+            if "quote" in k and "quote" in str(e):
+                k.pop("quote", None)
+                return await f(self, *a, **k)
+            raise
+    return w
+
+
+for _n in [n for n in dir(_Msg) if n.startswith("reply")]:
+    _f = getattr(_Msg, _n, None)
+    if callable(_f):
+        setattr(_Msg, _n, _quote_safe(_f))
+
+
 # saved clone session kharab hone wale errors (pyrogram version ke hisaab se)
 _BAD_SESSION = tuple(
     c for c in (getattr(errors, "Unauthorized", None), getattr(errors, "AuthKeyDuplicated", None)) if c
@@ -65,6 +89,10 @@ class SIMPLE(Client):
                 await asyncio.sleep(wait_sec)
             except (TimeoutError, asyncio.TimeoutError, OSError, ConnectionError) as e:
                 tries += 1
+                if getattr(config, "IS_CLONE_BOT", False) and tries > 3:
+                    # baar baar login se Telegram aur atakta hai — clone ko band karke owner ko batao
+                    LOGGER(__name__).error("Clone login 3 baar timeout — token BotFather se /revoke karke naya daalo.")
+                    sys.exit(4)
                 if tries > 20:
                     raise
                 wait_sec = min(30 * tries, 300)

@@ -174,6 +174,16 @@ async def _watch(doc, proc, started):
         _RUNNING.pop(bot_id, None)
     if bot_id in _STOPPING:
         return
+    if code == 4:
+        _FAILS.pop(bot_id, None)
+        await _col().update_one({"bot_id": bot_id}, {"$set": {"enabled": False, "bot_session": ""}})
+        await _notify(
+            f"⚠️ <b>ᴄʟᴏɴᴇ @{doc.get('username')} ʟᴏɢɪɴ ɴᴀʜɪ ʜᴏ ʀᴀʜᴀ</b>\n\n"
+            "Telegram is bot ka login baar baar timeout kar raha hai (bahut zyada login ho chuke).\n"
+            "Fix: @BotFather → /revoke → is bot ka naya token lo → /admins → Cʟᴏɴᴇ Bᴏᴛ → ➕ Naya Clone "
+            "me naya token + wahi string daalo."
+        )
+        return
     if time.time() - started < 120:
         # shuru hote hi band ho gaya → 3 baar ruk ke dobara try, phir band
         fails = _FAILS.get(bot_id, 0) + 1
@@ -255,6 +265,12 @@ async def _do_clone(message: Message, token: str, string: str):
         bot_me = await _check_token(token)
     except Exception as e:
         return await wait.edit_text(f"❌ ʙᴏᴛ ᴛᴏᴋᴇɴ ɴᴀʜɪ ᴄʜᴀʟᴀ : <code>{_esc(str(e))}</code>")
+    # pehle se chal raha clone ho to band karo, warna string do jagah chalegi (AUTH_KEY_DUPLICATED)
+    for d in await _all_clones():
+        if d["bot_id"] != bot_me.id and d.get("string") == string:
+            return await wait.edit_text(f"❌ ʏᴇ sᴛʀɪɴɢ ᴘᴇʜʟᴇ sᴇ @{d.get('username')} ᴍᴇ ʟᴀɢɪ ʜᴀɪ.")
+    await _stop(bot_me.id)
+    await asyncio.sleep(3)
     try:
         ass_me = await _check_string(string)
     except Exception as e:

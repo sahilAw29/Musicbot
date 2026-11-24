@@ -92,7 +92,7 @@ async def export_media():
         from SIMPLE_MUSIC import LOGGER, app
         os.makedirs(MEDIA_DIR, exist_ok=True)
         for fid in await _collect_ids():
-            if local_media(fid) or time.time() - _FAILED.get(fid, 0) < 3600:
+            if local_media(fid) or time.time() - _FAILED.get(fid, 0) < 86400:
                 continue
             d = _dir(fid)
             os.makedirs(d, exist_ok=True)

@@ -93,6 +93,10 @@ async def init():
     except:
         pass
 
+    # same bot dusri jagah chal raha ho to wait (AUTH_KEY_DUPLICATED se bachne ke liye)
+    from SIMPLE_MUSIC.utils import instance_lock
+    await instance_lock.acquire(LOGGER("SIMPLE_MUSIC"))
+
     if getattr(config, "IS_CLONE_BOT", False):
         # main bot ke saved file_id (photo/video/sticker) clone me bhi chale
         from SIMPLE_MUSIC.utils.clone_media import install_clone_patches
@@ -147,6 +151,7 @@ async def init():
 
     await app.stop()
     await userbot.stop()
+    await instance_lock.release()
 
     LOGGER("SIMPLE_MUSIC").info(
         "𝗦𝗧𝗢𝗣 𝗬𝗢𝗥𝗨 𝗠𝗨𝗦𝗜𝗖🎻 𝗕𝗢𝗧.."
