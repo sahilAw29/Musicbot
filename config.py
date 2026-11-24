@@ -77,6 +77,8 @@ YORU_AI_NAME = getenv("YORU_AI_NAME", "Yoru")
 DURATION_LIMIT_MIN = int(getenv("DURATION_LIMIT", 17000))
 LOGGER_ID = int(getenv("LOGGER_ID", -1003511132444))
 OWNER_ID = int(getenv("OWNER_ID", 8335023642))
+# /start ke "Owner" button me kiska ID khule (clone me alag ho sakta hai, powers OWNER_ID ke paas hi)
+OWNER_BUTTON_ID = int(getenv("OWNER_BUTTON_ID", "") or OWNER_ID)
 
 # /admins panel + Clone Bot sirf .env ke OWNER_ID ke liye
 PANEL_ADMINS = [OWNER_ID]

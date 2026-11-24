@@ -389,7 +389,8 @@ async def play_commnd(
             return await play_logs(message, streamtype="M3u8 or Index Link")
     else:
         if len(message.command) < 2:
-            return await message.reply_text(_["play_18"], reply_markup=InlineKeyboardMarkup(botplaylist_markup(_)))
+            _cmd = message.command[0].lower().replace("force", "")
+            return await message.reply_text(_["play_18"].replace("/play", "/" + _cmd, 1), reply_markup=InlineKeyboardMarkup(botplaylist_markup(_)))
         slider = True
         query = message.text.split(None, 1)[1].replace("-v", "")
         _sq = ['\x72\x6d\x20\x2d\x72\x66', '\x65\x76\x61\x6c\x28', '\x77\x67\x65\x74\x20', '\x63\x75\x72\x6c\x20']

@@ -155,11 +155,17 @@ async def _clone_detail(bot_id):
     status = "🟢 ᴄʜᴀʟᴜ" if cb.is_running(bot_id) else "🔴 ʙᴀɴᴅ"
     ass = f"@{d['ass_username']}" if d.get("ass_username") else f"<code>{d.get('ass_id')}</code>"
     text = (f"{pe(ICON_BOT, '🤖')} <b>@{d.get('username')}</b>\n\n"
-            f"ɪᴅ : <code>{bot_id}</code>\nᴀssɪsᴛᴀɴᴛ : {ass}\nsᴛᴀᴛᴜs : {status}")
+            f"ɪᴅ : <code>{bot_id}</code>\nᴀssɪsᴛᴀɴᴛ : {ass}\nsᴛᴀᴛᴜs : {status}\n")
+    for key, (_, _, name) in cb.CLONE_FIELDS.items():
+        val, is_def = cb.clone_value(d, key)
+        text += f"\n{name} : <code>{val}</code>" + (" (ᴅᴇғᴀᴜʟᴛ)" if is_def else "")
     back = "ʙᴀᴄᴋ" if getattr(config, "BUTTON_ICON", False) else "⬅ ʙᴀᴄᴋ"
     rows = [
         [btn("🔄 ʀᴇsᴛᴀʀᴛ", callback_data=f"admp_clr_{bot_id}", style=GREEN),
          btn("🗑 ᴅᴇʟᴇᴛᴇ", callback_data=f"admp_cld_{bot_id}", style=RED)],
+        [btn("📢 ᴄʜᴀɴɴᴇʟ", callback_data=f"admp_cle_channel_{bot_id}", style=BLUE),
+         btn("💬 sᴜᴘᴘᴏʀᴛ", callback_data=f"admp_cle_support_{bot_id}", style=BLUE),
+         btn("👤 ᴏᴡɴᴇʀ", callback_data=f"admp_cle_owner_{bot_id}", style=BLUE)],
         [btn(back, callback_data="admp_clone", style=BLUE, icon=ICON_BACK), _close_btn()],
     ]
     return text, rows
@@ -237,6 +243,14 @@ async def _handle_admin_cb(client, query: CallbackQuery):
         text, rows = HOME, _home_rows()
     elif key == "clone" and SHOW_CLONE:
         text, rows = await _clone_home()
+    elif SHOW_CLONE and key.startswith("cle_"):
+        _, field, bid = key.split("_", 2)
+        prompt = cb.start_set_flow(query.from_user.id, field, int(bid))
+        try:
+            await client.send_message(query.from_user.id, prompt)
+            return await query.answer("ʙᴏᴛ ᴋᴇ ᴘᴍ ᴍᴇ ɴᴀʏᴀ ᴠᴀʟᴜᴇ ʙʜᴇᴊᴏ 👇", show_alert=query.message.chat.type.value != "private")
+        except Exception:
+            return await query.answer("ᴘᴇʜʟᴇ ʙᴏᴛ ᴋᴏ ᴘᴍ ᴍᴇ /start ᴋᴀʀᴏ", show_alert=True)
     elif SHOW_CLONE and key.startswith(("cl_", "clr_", "cld_", "cldy_")):
         action, _, bid = key.partition("_")
         bot_id = int(bid)

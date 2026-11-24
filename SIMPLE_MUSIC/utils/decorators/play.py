@@ -106,11 +106,19 @@ def PlayWrapper(command):
                 if "stream" in message.command:
                     return await message.reply_text(_["str_1"])
                 buttons = botplaylist_markup(_)
-                return await message.reply_photo(
-                    photo=config.PLAYLIST_IMG_URL,
-                    caption=_["play_18"],
-                    reply_markup=InlineKeyboardMarkup(buttons),
-                )
+                # /vplay par "/vplay" dikhe, /play par "/play" (same photo ke saath)
+                cmd = message.command[0].lower().replace("force", "")
+                caption = _["play_18"].replace("/play", "/" + cmd, 1)
+                try:
+                    return await message.reply_photo(
+                        photo=config.PLAYLIST_IMG_URL,
+                        caption=caption,
+                        reply_markup=InlineKeyboardMarkup(buttons),
+                    )
+                except Exception:
+                    return await message.reply_text(
+                        caption, reply_markup=InlineKeyboardMarkup(buttons)
+                    )
         if message.command[0][0] == "c":
             chat_id = await get_cmode(message.chat.id)
             if chat_id is None:

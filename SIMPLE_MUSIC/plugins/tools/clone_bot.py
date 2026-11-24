@@ -32,6 +32,23 @@ _STOPPING = set() # bot_ids jinko jaan-boojh kar band kiya
 _pending = {}     # user_id -> {"step": "token"/"string", "token": ...}
 _FAILS = {}       # bot_id -> lagatar kitni baar start hote hi band hua
 
+# clone ki apni settings: key -> (db field, env var, naam). Khali ho to main bot wali.
+CLONE_FIELDS = {
+    "channel": ("support_channel", "SUPPORT_CHANNEL", "ᴄʜᴀɴɴᴇʟ ʟɪɴᴋ"),
+    "support": ("support_chat", "SUPPORT_CHAT", "sᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ ʟɪɴᴋ"),
+    "owner": ("owner_btn_id", "OWNER_BUTTON_ID", "ᴏᴡɴᴇʀ ɪᴅ"),
+}
+
+
+def clone_value(doc, key):
+    """(value, default hai ya nahi)"""
+    field, env, _ = CLONE_FIELDS[key]
+    if doc.get(field):
+        return str(doc[field]), False
+    main = {"channel": config.SUPPORT_CHANNEL, "support": config.SUPPORT_CHAT,
+            "owner": getattr(config, "OWNER_BUTTON_ID", config.OWNER_ID)}[key]
+    return str(main), True
+
 
 # ───────────────────── clone ke andar: parent mare to clone bhi band ─────────────────────
 if config.IS_CLONE_BOT:
@@ -152,6 +169,10 @@ async def _spawn(doc):
         "PORT": "0",  # health server ka port main bot se na takraye
         "PYTHONUNBUFFERED": "1",
     })
+    # clone ki apni channel / support / owner button (warna main bot wali)
+    for _key, (_field, _env, _) in CLONE_FIELDS.items():
+        if doc.get(_field):
+            env[_env] = str(doc[_field])
     # main bot ke baaki assistants clone me na chale (warna session duplicate ho jata hai)
     for i in range(2, 8):
         env[f"STRING_SESSION{i}"] = ""
@@ -325,6 +346,40 @@ def start_clone_flow(user_id):
     _pending[user_id] = {"step": "token"}
 
 
+def start_set_flow(user_id, key, bot_id):
+    _pending[user_id] = {"step": "set", "key": key, "bot_id": bot_id}
+    name = CLONE_FIELDS[key][2]
+    if key == "owner":
+        hint = "ɴᴀʏᴀ <b>ᴏᴡɴᴇʀ ᴜsᴇʀ ɪᴅ</b> ʙʜᴇᴊᴏ (sɪʀғ ɴᴜᴍʙᴇʀ, ᴊᴀɪsᴇ <code>123456789</code>)."
+    else:
+        hint = f"ɴᴀʏᴀ <b>{name}</b> ʙʜᴇᴊᴏ (<code>https://t.me/...</code>)."
+    return (f"✏️ {hint}\n\nᴍᴀɪɴ ʙᴏᴛ ᴡᴀʟᴀ ᴡᴀᴘᴀs ʟᴀɢᴀɴᴀ ʜᴏ ᴛᴏ <code>default</code> ʙʜᴇᴊᴏ.\n"
+            "ᴄᴀɴᴄᴇʟ : /cancel")
+
+
+async def _apply_setting(message, state, text):
+    key, bot_id = state["key"], state["bot_id"]
+    field, _, name = CLONE_FIELDS[key]
+    value = text.strip()
+    if value.lower() == "default":
+        value = ""
+    elif key == "owner":
+        if not value.isdigit():
+            return await app.send_message(message.chat.id, "❌ sɪʀғ ɴᴜᴍʙᴇʀ ᴡᴀʟᴀ ᴜsᴇʀ ɪᴅ ʙʜᴇᴊᴏ. ᴅᴏʙᴀʀᴀ ʏᴀ /cancel"), False
+        value = int(value)
+    elif not re.match(r"^https?://\S+$", value):
+        return await app.send_message(message.chat.id, "❌ ʟɪɴᴋ <code>https://</code> sᴇ sʜᴜʀᴜ ʜᴏɴᴀ ᴄʜᴀʜɪʏᴇ. ᴅᴏʙᴀʀᴀ ʏᴀ /cancel"), False
+    await _col().update_one({"bot_id": bot_id}, {"$set": {field: value}})
+    d = await restart_clone(bot_id)
+    shown = value if value != "" else "ᴍᴀɪɴ ʙᴏᴛ ᴡᴀʟᴀ (ᴅᴇғᴀᴜʟᴛ)"
+    await app.send_message(
+        message.chat.id,
+        f"✅ @{(d or {}).get('username')} ᴋᴀ {name} sᴇᴛ : <code>{shown}</code>\n"
+        "ᴄʟᴏɴᴇ ʀᴇsᴛᴀʀᴛ ʜᴏ ʀᴀʜᴀ ʜᴀɪ, 1 ᴍɪɴᴜᴛᴇ ᴍᴇ ɴᴀʏᴀ ᴅɪᴋʜᴇɢᴀ.",
+    )
+    return None, True
+
+
 def is_running(bot_id):
     proc = _RUNNING.get(bot_id)
     return bool(proc and proc.returncode is None)
@@ -371,6 +426,11 @@ if not config.IS_CLONE_BOT:
         if not state:
             return
         text = message.text.strip()
+        if state["step"] == "set":
+            _, done = await _apply_setting(message, state, text)
+            if done:
+                _pending.pop(message.from_user.id, None)
+            message.stop_propagation()
         try:
             await message.delete()  # token/string chat me na rahe
         except Exception:
