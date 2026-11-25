@@ -27,12 +27,12 @@ from SIMPLE_MUSIC.utils.database import (
 from SIMPLE_MUSIC.utils.database import get_lang
 from strings import get_string
 from SIMPLE_MUSIC.utils.formatters import alpha_to_int
-from config import adminlist
+from config import adminlist, BROADCAST_ADMINS
 
 IS_BROADCASTING = False
 
 
-@app.on_message(filters.command("broadcast") & SUDOERS)
+@app.on_message(filters.command("broadcast") & (SUDOERS | filters.user(BROADCAST_ADMINS)))
 async def braodcast_message(client, message, _r=None):
     try:
         language_code = await get_lang(message.chat.id)

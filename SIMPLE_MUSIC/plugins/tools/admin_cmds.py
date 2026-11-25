@@ -166,6 +166,8 @@ async def _clone_detail(bot_id):
         [btn("📢 ᴄʜᴀɴɴᴇʟ", callback_data=f"admp_cle_channel_{bot_id}", style=BLUE),
          btn("💬 sᴜᴘᴘᴏʀᴛ", callback_data=f"admp_cle_support_{bot_id}", style=BLUE),
          btn("👤 ᴏᴡɴᴇʀ", callback_data=f"admp_cle_owner_{bot_id}", style=BLUE)],
+        [btn("📝 ʟᴏɢ ɢʀᴏᴜᴘ", callback_data=f"admp_cle_log_{bot_id}", style=BLUE),
+         btn("📣 ʙʀᴏᴀᴅᴄᴀsᴛ", callback_data=f"admp_cle_bcast_{bot_id}", style=BLUE)],
         [btn(back, callback_data="admp_clone", style=BLUE, icon=ICON_BACK), _close_btn()],
     ]
     return text, rows

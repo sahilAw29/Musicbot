@@ -37,6 +37,8 @@ CLONE_FIELDS = {
     "channel": ("support_channel", "SUPPORT_CHANNEL", "ᴄʜᴀɴɴᴇʟ ʟɪɴᴋ"),
     "support": ("support_chat", "SUPPORT_CHAT", "sᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ ʟɪɴᴋ"),
     "owner": ("owner_btn_id", "OWNER_BUTTON_ID", "ᴏᴡɴᴇʀ ɪᴅ"),
+    "log": ("log_group_id", "LOGGER_ID", "ʟᴏɢ ɢʀᴏᴜᴘ ɪᴅ"),
+    "bcast": ("broadcast_admin", "BROADCAST_ADMINS", "ʙʀᴏᴀᴅᴄᴀsᴛ ᴀᴅᴍɪɴ ɪᴅ"),
 }
 
 
@@ -46,7 +48,9 @@ def clone_value(doc, key):
     if doc.get(field):
         return str(doc[field]), False
     main = {"channel": config.SUPPORT_CHANNEL, "support": config.SUPPORT_CHAT,
-            "owner": getattr(config, "OWNER_BUTTON_ID", config.OWNER_ID)}[key]
+            "owner": getattr(config, "OWNER_BUTTON_ID", config.OWNER_ID),
+            "log": config.LOGGER_ID,
+            "bcast": "sɪʀғ sᴜᴅᴏ"}[key]
     return str(main), True
 
 
@@ -173,6 +177,7 @@ async def _spawn(doc):
     for _key, (_field, _env, _) in CLONE_FIELDS.items():
         if doc.get(_field):
             env[_env] = str(doc[_field])
+    env["CLONE_CUSTOM_LOG"] = "1" if doc.get("log_group_id") else ""
     # main bot ke baaki assistants clone me na chale (warna session duplicate ho jata hai)
     for i in range(2, 8):
         env[f"STRING_SESSION{i}"] = ""
@@ -351,6 +356,12 @@ def start_set_flow(user_id, key, bot_id):
     name = CLONE_FIELDS[key][2]
     if key == "owner":
         hint = "ɴᴀʏᴀ <b>ᴏᴡɴᴇʀ ᴜsᴇʀ ɪᴅ</b> ʙʜᴇᴊᴏ (sɪʀғ ɴᴜᴍʙᴇʀ, ᴊᴀɪsᴇ <code>123456789</code>)."
+    elif key == "log":
+        hint = ("ʟᴏɢ ɢʀᴏᴜᴘ ᴋɪ <b>ᴄʜᴀᴛ ɪᴅ</b> ʙʜᴇᴊᴏ (ᴊᴀɪsᴇ <code>-1001234567890</code>).\n"
+                "⚠️ ᴘᴇʜʟᴇ ᴄʟᴏɴᴇ ʙᴏᴛ ᴋᴏ ᴜs ɢʀᴏᴜᴘ ᴍᴇ <b>ᴀᴅᴍɪɴ</b> ʙᴀɴᴀᴏ ᴀᴜʀ ᴀssɪsᴛᴀɴᴛ ᴋᴏ ᴀᴅᴅ ᴋᴀʀᴏ.")
+    elif key == "bcast":
+        hint = ("ᴊɪsᴇ ɪs ᴄʟᴏɴᴇ ᴍᴇ <b>/broadcast</b> ᴋᴀʀɴᴇ ᴅᴇɴᴀ ʜᴀɪ ᴜsᴋᴀ <b>ᴜsᴇʀ ɪᴅ</b> ʙʜᴇᴊᴏ.\n"
+                "ᴢʏᴀᴅᴀ ʜᴏɴ ᴛᴏ sᴘᴀᴄᴇ sᴇ: <code>111 222</code>")
     else:
         hint = f"ɴᴀʏᴀ <b>{name}</b> ʙʜᴇᴊᴏ (<code>https://t.me/...</code>)."
     return (f"✏️ {hint}\n\nᴍᴀɪɴ ʙᴏᴛ ᴡᴀʟᴀ ᴡᴀᴘᴀs ʟᴀɢᴀɴᴀ ʜᴏ ᴛᴏ <code>default</code> ʙʜᴇᴊᴏ.\n"
@@ -367,6 +378,15 @@ async def _apply_setting(message, state, text):
         if not value.isdigit():
             return await app.send_message(message.chat.id, "❌ sɪʀғ ɴᴜᴍʙᴇʀ ᴡᴀʟᴀ ᴜsᴇʀ ɪᴅ ʙʜᴇᴊᴏ. ᴅᴏʙᴀʀᴀ ʏᴀ /cancel"), False
         value = int(value)
+    elif key == "log":
+        if not re.match(r"^-\d{6,}$", value):
+            return await app.send_message(message.chat.id, "❌ ɢʀᴏᴜᴘ ᴄʜᴀᴛ ɪᴅ <code>-100</code> sᴇ sʜᴜʀᴜ ʜᴏᴛɪ ʜᴀɪ. ᴅᴏʙᴀʀᴀ ʏᴀ /cancel"), False
+        value = int(value)
+    elif key == "bcast":
+        ids = value.replace(",", " ").split()
+        if not ids or not all(i.isdigit() for i in ids):
+            return await app.send_message(message.chat.id, "❌ sɪʀғ ɴᴜᴍʙᴇʀ ᴡᴀʟᴇ ᴜsᴇʀ ɪᴅ ʙʜᴇᴊᴏ. ᴅᴏʙᴀʀᴀ ʏᴀ /cancel"), False
+        value = " ".join(ids)
     elif not re.match(r"^https?://\S+$", value):
         return await app.send_message(message.chat.id, "❌ ʟɪɴᴋ <code>https://</code> sᴇ sʜᴜʀᴜ ʜᴏɴᴀ ᴄʜᴀʜɪʏᴇ. ᴅᴏʙᴀʀᴀ ʏᴀ /cancel"), False
     await _col().update_one({"bot_id": bot_id}, {"$set": {field: value}})

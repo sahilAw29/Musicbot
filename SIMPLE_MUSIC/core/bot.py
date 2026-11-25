@@ -117,6 +117,14 @@ class SIMPLE(Client):
                     await self._save_clone_session(await self.export_session_string())
                 except Exception as e:
                     LOGGER(__name__).warning(f"Clone session save failed: {e}")
+            if os.getenv("CLONE_CUSTOM_LOG") == "1":
+                try:
+                    await self.send_message(
+                        config.LOGGER_ID,
+                        f"<u><b>» {self.mention} ʙᴏᴛ sᴛᴀʀᴛᴇᴅ :</b></u>\n\nɪᴅ : <code>{self.id}</code>\nɴᴀᴍᴇ : {self.name}\nᴜsᴇʀɴᴀᴍᴇ : @{self.username}",
+                    )
+                except Exception as e:
+                    LOGGER(__name__).warning(f"Clone log group me message nahi gaya (bot ko group me admin banao): {e}")
             LOGGER(__name__).info(f"Clone Bot Started as {self.name}")
             return
 
